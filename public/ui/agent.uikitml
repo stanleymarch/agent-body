@@ -1,0 +1,135 @@
+<!--
+  Agent status panel. Panel, Divider, Button, ButtonIcon, and ButtonLabel come
+  from the bundled Horizon kit; StickyNote, PersonStanding, and Eye are bundled
+  Lucide icon components. Numeric sizes are centimetres.
+-->
+<style>
+  .panel-root {
+    flex-direction: column;
+    width: 344px;
+  }
+  .panel-content {
+    flex-direction: column;
+    padding-left: 24px;
+    padding-right: 24px;
+    padding-top: 16px;
+  }
+  .heading {
+    height: 30px;
+    text-align: center;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 24px;
+    color: #272727;
+  }
+  .heading:dark {
+    color: rgba(255, 255, 255, 0.9);
+  }
+  .meta {
+    margin-top: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 16px;
+    color: #5e5e5e;
+  }
+  .meta:dark {
+    color: rgba(255, 255, 255, 0.7);
+  }
+  .memory {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 16px;
+    color: #272727;
+  }
+  .memory:dark {
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .settings-view {
+    flex-direction: column;
+    display: none;
+  }
+  .settings-help {
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 17px;
+    color: #5e5e5e;
+  }
+  .settings-help:dark {
+    color: rgba(255, 255, 255, 0.7);
+  }
+  .button {
+    justify-content: flex-start;
+    margin-left: 24px;
+    margin-right: 24px;
+    margin-top: 10px;
+  }
+  .button-label {
+    transform-translate-y: 1px;
+  }
+  .last {
+    margin-bottom: 24px;
+  }
+</style>
+<Panel class="panel-root">
+  <div id="memory-content" class="panel-content">
+    <div id="agent-name" class="heading">Agent</div>
+    <div id="memory-count" class="meta">0 memories</div>
+    <Divider></Divider>
+    <div id="memory-item-0" class="memory">-</div>
+    <div id="memory-item-1" class="memory">-</div>
+    <div id="memory-item-2" class="memory">-</div>
+    <div id="memory-item-3" class="memory">-</div>
+  </div>
+  <Button id="btn-add-note" class="button">
+    <ButtonIcon>
+      <StickyNote></StickyNote>
+    </ButtonIcon>
+    <ButtonLabel class="button-label">Add Note</ButtonLabel>
+  </Button>
+  <Button id="btn-toggle-idle" class="button">
+    <ButtonIcon>
+      <PersonStanding></PersonStanding>
+    </ButtonIcon>
+    <ButtonLabel id="btn-toggle-idle-label" class="button-label">Idle: On</ButtonLabel>
+  </Button>
+  <Button id="btn-toggle-gaze" class="button">
+    <ButtonIcon>
+      <Eye></Eye>
+    </ButtonIcon>
+    <ButtonLabel id="btn-toggle-gaze-label" class="button-label">Gaze: On</ButtonLabel>
+  </Button>
+  <Button id="btn-open-settings" class="button last">
+    <ButtonLabel class="button-label">Model Settings</ButtonLabel>
+  </Button>
+  <div id="settings-view" class="settings-view">
+    <div class="panel-content">
+      <div class="heading">Model Settings</div>
+      <Divider></Divider>
+      <div id="settings-summary" class="meta">Offline brain</div>
+      <div id="settings-help" class="settings-help">
+        Select a field. Quest opens its system keyboard.
+      </div>
+    </div>
+    <Button id="btn-edit-endpoint" class="button">
+      <ButtonLabel id="settings-endpoint-label" class="button-label">
+        Endpoint: Not set
+      </ButtonLabel>
+    </Button>
+    <Button id="btn-edit-model" class="button">
+      <ButtonLabel id="settings-model-label" class="button-label">
+        Model: Not set
+      </ButtonLabel>
+    </Button>
+    <Button id="btn-edit-key" class="button">
+      <ButtonLabel id="settings-key-label" class="button-label">
+        API Key: Not set
+      </ButtonLabel>
+    </Button>
+    <Button id="btn-clear-key" class="button">
+      <ButtonLabel class="button-label">Clear API Key</ButtonLabel>
+    </Button>
+    <Button id="btn-back-settings" class="button last">
+      <ButtonLabel class="button-label">Back</ButtonLabel>
+    </Button>
+  </div>
+</Panel>
