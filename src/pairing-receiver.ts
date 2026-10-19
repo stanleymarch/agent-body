@@ -86,11 +86,14 @@ export function mountPairingReceiver(): (() => void) | null {
   };
   pin.addEventListener('keydown', stopLocomotionKeys);
 
-  const unmount = (): void => {
+  const clearPairingHash = (): void => {
     if (parsePairingFragment(location.hash) != null) {
       // Fragment never reached the server; drop it from history and the URL.
       history.replaceState(null, '', location.pathname + location.search);
     }
+  };
+  const unmount = (): void => {
+    clearPairingHash();
     pin.removeEventListener('keydown', stopLocomotionKeys);
     backdrop.remove();
     style.remove();
@@ -109,6 +112,9 @@ export function mountPairingReceiver(): (() => void) | null {
     void consumePairingUrl(location.href, value)
       .then((patch) => agentState.updateSettings(patch))
       .then(() => {
+        // Remove the encrypted secret from the URL immediately; keep the
+        // confirmation visible briefly before the modal closes.
+        clearPairingHash();
         status.className = 'success';
         status.textContent =
           'Settings applied to this headset. You can close this screen.';
