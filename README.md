@@ -1,134 +1,148 @@
-# IWSDK App
+# Agent Body
 
-This project uses `iwsdk.config.json` for declarative scene, asset, component,
-XR, and emulator configuration. Application systems remain explicit in
-`src/index.ts`.
+One IWSDK application and one shared state for desktop, mixed reality, and a
+virtual room. Built from the official Mixed Reality scaffold; there is no second
+browser app. `iwsdk.config.json` selects the scene, assets, components and features.
+
+Published site: https://stanleymarch.github.io/agent-body/
 
 ```sh
-npm install
+npm ci
+npm run --if-present typecheck
 npm run dev
 ```
 
-Use the Runtime and Editor controls in the managed browser to switch between
-the running experience and its authored scene.
+The CLI manages Vite and its browser. Use the Runtime/Editor toggle in that window.
+Do not start a separate Vite process. Production builds use `npm run build`.
 
-## Starter content
+## Workspace
 
-The robot and welcome panel are small examples of authored scene content plus
-runtime systems. The robot turns toward the player's head and plays a sound
-when pressed. To remove the robot, delete its scene node, its `RobotSystem`
-registration from `src/index.ts` or `src/index.js`, and its `Robot` registration
-from `src/components.ts` or `src/components.js`; you can then delete the unused
-robot component and system files. To remove the welcome panel, delete its scene
-node and its `PanelSystem` registration from the application entry point.
+Desktop has one sidebar; an immersive session hides it and shows one spatial
+panel. Both presentations use `src/workspace.ts`, the same settings draft, chat,
+memories, speech adapters and avatar. The old welcome panel, robot, HUD copies,
+standalone settings card and bottom chat overlay have been removed.
 
-## Three runtimes, one application
+- **Dialogue**: persisted conversation, message input, microphone and Send.
+  Enter sends; Shift+Enter adds a line. With no LLM endpoint, the header explicitly
+  says Offline demo. This is not a live AI service.
+- **Character**: bundled VRM source, name, system prompt, model URL, scale, idle
+  motion and gaze. **Use bundled VRM** resets the model source and scale, not the
+  personality. A custom URL must allow browser cross-origin loading. A failed
+  replacement leaves the previous valid avatar visible and can be retried.
+- **Connections / LLM**: OpenAI-compatible base URL, model ID and dedicated key.
+- **Connections / STT**: Off, Browser speech recognition, or an OpenAI-compatible
+  transcription endpoint. The API path records microphone audio with
+  MediaRecorder and posts multipart `file`, `model`, `language` to
+  `<base>/audio/transcriptions`.
+- **Connections / TTS**: Off, Browser voices, or an OpenAI-compatible speech
+  endpoint. The API path posts `model`, `voice`, `input` to `<base>/audio/speech`
+  and plays the returned audio. **Test voice** saves a valid draft first.
+- **Memory**: add, search and clear local notes; conversation also persists here.
 
-The same application runs in a normal desktop browser, in mixed reality, and
-in a fully virtual space; there is one world, one scene, and one state — no
-logic is forked between modes. XR means the immersive browser session.
+STT and TTS have separate endpoints, models and keys; neither silently borrows
+the LLM key. Browser speech depends on installed voices and recognition support.
+Unavailable features and provider errors are reported, not silently ignored.
+Microphone input requires HTTPS, user permission and browser recording support.
+Stopping a recording releases its tracks; cancelling also aborts transcription
+and ignores late results. Switching a speech provider stops its active session.
 
-- Browser: WASD/arrows to move, Space to jump, right mouse button to look
-  around (pointer lock), left click to press objects and panel buttons. The
-  browser also previews the virtual space that VR uses.
-- XR-capable browser: the welcome panel shows two entries. **Enter MR**
-  starts `immersive-ar` (passthrough, anchors, plane/mesh detection,
-  hit-test). **Enter VR Space** starts `immersive-vr` with those MR-only
-  features disabled and shows the procedural virtual room instead. Both run
-  from the same live `World` (`world.launchXR({ sessionMode })`); switching
-  modes never reloads the page or resets agent state.
-- The virtual room (`src/scene-assets/vr-space.scene-asset.ts`, scene node
-  `vr-space`) is visible on desktop and in VR, and hidden in MR so the real
-  room stays visible.
-- Quest (MR): hands/controllers, grabbing (`DistanceGrabbable`), scene
-  understanding, and environment raycast come from the XR feature set in
-  `iwsdk.config.json`; WASD-style browser controls are simply inactive.
+Settings and memories are local to this browser's IndexedDB. Save applies only
+edited fields, preserving unrelated settings updates. Secret inputs never display
+stored keys: leave blank to retain, enter a replacement, or explicitly Clear.
+Immersive Connections also offers **Clear key** followed by **Save**.
+`window.__agentBody` exists only in development builds.
 
-## User avatar
+## Desktop, MR and VR
 
-`public/vrm/user.vrm` (VRM 1.0) is loaded by `AvatarSystem` through a dedicated
-`GLTFLoader` with `VRMLoaderPlugin` — `AssetManager`'s internal GLTF loader is
-not plugin-extensible. The avatar is one entity in the shared world, visible in
-both runtimes; idle life is procedural (blink via expressions, breath/sway via
-humanoid bones) because the model ships no embedded clips.
+XR means an immersive browser session. IWER is IWSDK's browser-based XR emulator:
+https://iwsdk.dev/guides/02-testing-experience.html#iwer-controls
 
-## Agent state & UI
+- Desktop renders the avatar and virtual room without an XR session. WASD/arrows
+  move, Space jumps, right mouse button looks around, and pointer input is enabled.
+  Mouse look preserves the configured desktop camera pose instead of resetting it.
+- **Enter MR** requests `immersive-ar` from the current world. The virtual room
+  hides; hands/controllers, grabbing, anchors, plane/mesh detection and environment
+  hit testing use the configured IWSDK features.
+- **Enter VR** requests `immersive-vr` from the same world and shows the virtual
+  room, without MR-only session features. **Return to browser** exits the session.
+  Settings, avatar and conversation do not reset.
+- Entry buttons appear only for supported modes. In the spatial panel, select a
+  field to edit it through an in-page input; provider/toggle fields cycle directly.
+  On supporting Quest Browser versions this requests the system keyboard. IWER
+  does not prove the physical headset's keyboard or microphone behavior.
 
-`src/agent/contracts.ts` pins the seams; nothing in the agent layer knows
-which runtime it is in:
+## Character and rendering
 
-- `src/agent/state.ts` — Dexie (`agent-body` DB) + zod + MiniSearch: settings
-  and memories persist locally in both modes; fuzzy memory search is warmed on
-  load; IndexedDB failure degrades to in-memory. Public operations wait for
-  database initialization, so an immediate first interaction cannot lose data.
-- `public/ui/agent.uikitml` + `src/agent-ui.ts` — the agent panel (HUD in
-  browser, world-space in XR): agent name, memory count/list, Add Note, and
-  Idle/Gaze toggles that drive the VRM body.
-- `src/avatar-body.ts` — `avatarBody` facade for expressions, text-driven
-  visemes, gaze, and idle. `AmbientSystem` schedules infrequent
-  micro-expressions without per-frame allocations.
-- `window.__agentBody` exposes the state, brain, and avatar singletons for
-  runtime inspection from the dev tooling.
+`public/vrm/user.vrm` is VRoid AvatarSample_D (VRM 1.0), presented as Ava. It has
+no embedded animation clips; blink, breathing, sway, mouth cues and the gesture
+vocabulary below are procedural, not a motion-capture animation library.
+`AvatarSystem` uses GLTFLoader with VRMLoaderPlugin because IWSDK's manifest
+loader does not expose VRM plugin setup. The avatar remains one entity in the
+shared world.
 
-## Agent brain
+MToon needs actual ambient/hemisphere/directional lights; an IBL environment map
+alone does not light this shader. The scene now supplies those lights without
+replacing the VRM's materials. The desktop camera and headset pose remain separate.
 
-`src/agent/brain.ts` uses AI SDK 7 with an OpenAI-compatible chat endpoint. It
-streams model text into VRM mouth cues and provides `memory_write` and
-`memory_search` tools backed by the same local state used by every interface.
-The bottom browser chat bar is intentionally hidden in immersive mode; the
-conversation and memories remain in the shared agent state.
+**Asset rights:** the bundled VRM's metadata credits VRoid and declares restricted
+redistribution/modification and personal non-profit use. Its presence is not proof
+of redistribution permission. Verify the original rights before further public
+redistribution or commercial use; application source licensing does not license
+this avatar. A self-owned or appropriately licensed VRM can be selected in Character.
 
-With no endpoint configured, the app uses a deterministic offline brain
-(`npm run dev` with no extra environment). For a compatible endpoint during
-development:
+## Performance cues (emotion + gesture with every reply)
 
-```sh
-VITE_AGENT_ENDPOINT=https://example.test/v1 \
-VITE_AGENT_MODEL=model-id \
-VITE_AGENT_KEY=user-owned-key \
-npm run dev
-```
+Every reply carries one performance tag at the start, e.g. `[[happy|wave]] Hi!`.
+This is the whole transmission system: the tag travels inside the reply text,
+`CueStreamFilter` (src/agent/cues.ts) strips it — even when it is split across
+stream chunks — and the clean text goes to the chat, speech synthesis, visemes
+and memory, while the parsed cue immediately drives the body:
 
-This static app sends the configured key from the browser. Use only a
-user-owned/local endpoint while developing; production deployments should put
-provider credentials behind an application gateway. Web Speech synthesis is a
-best-effort output enhancement and no-ops when the browser has no voice.
-Microphone speech recognition is not implemented because Quest Browser support
-must be proven on a physical headset before selecting an ASR path.
+- Emotions `neutral happy angry sad relaxed surprised` — VRM expression presets
+  with a smooth attack/hold/decay envelope (peak weight 0.65, ~4.4 s window).
+- Gestures `none wave nod shake think bow` — procedural normalized-bone poses
+  layered on top of breathing/sway, then restored exactly to the rest pose.
+- The live system prompt instructs the model to emit exactly one tag; if it
+  omits or misspells it, values fall back to `neutral|none` and nothing leaks
+  into displayed text. An endpoint failure performs `sad|shake`.
+- Offline brain picks the cue from keywords (greetings → `happy|wave`,
+  questions → `surprised|nod`, goodbyes → `relaxed|bow`, …), so the demo
+  performs without any endpoint. The workspace header and spatial status show
+  the current cue (e.g. `· happy · wave`) until the next message.
+- Ambient idle micro-expressions pause while a cue performs, so the two never
+  fight over expression weights.
 
-## Model settings & headset pairing
+Note: the spatial UIKitML panel's bundled font lacks Cyrillic glyphs; Cyrillic
+chat text renders in the desktop DOM panel but may show placeholder boxes in
+the immersive panel. Speech and cue parsing handle Cyrillic normally.
 
-Settings live only in the browser's IndexedDB and are never bundled.
+## Settings transfer by QR
 
-- Desktop: the **Model settings** card (bottom-right) edits endpoint, model
-  id, and API key. The key uses replacement semantics — it is never rendered
-  back after saving, and it is cleared only through the explicit
-  **Clear key** action.
-- Immersive (MR/VR): the agent panel's **Model Settings** view selects a
-  field; focusing an in-page DOM input summons the Quest system keyboard
-  (Browser 26.1+, `session.isSystemKeyboardSupported`). Field values show as
-  summaries only; the key is shown as Set/Not set.
-- **Share to headset** generates a QR code containing
-  `<site-url>#pair=v1.<salt>.<iv>.<ciphertext>`. The payload is AES-GCM
-  encrypted under a PBKDF2-SHA256 key derived from a one-time 6-digit PIN
-  (300k iterations, 10-minute TTL). Scan it with any headset QR app — or
-  copy the link — open it in Quest Browser, type the PIN, and the settings
-  are decrypted into that headset's IndexedDB. The fragment never reaches a
-  server, and the QR alone is useless without the PIN. WebXR pages cannot
-  read passthrough camera pixels, so scanning itself is delegated to native
-  QR apps on the headset.
+**Connections / Transfer** creates a link/QR for the complete saved character,
+LLM, STT and TTS configuration. Save changes first. Open the link on the receiving
+browser, enter its separate six-digit PIN, then save the decoded settings locally.
+A headset's native QR scanner may open the link; the WebXR app does not itself
+read passthrough camera pixels. Copy/open the link if scanning is unavailable.
 
-## Hosting
+The v2 payload is AES-GCM encrypted with a PBKDF2-SHA256 PIN-derived key
+(300,000 iterations), expires after ten minutes and travels in the URL fragment.
+The receiver clears that fragment immediately. This is **not** a server-enforced
+one-time link or revocable invitation: copied ciphertext can be replayed during
+its lifetime, and a six-digit PIN permits offline guessing. Treat QR and PIN as
+secrets, do not publish them together, and rotate keys if exposed.
 
-Published as a GitHub Pages project site from `main` via
-`.github/workflows/deploy-pages.yml` (typecheck + vite build, `base: './'`
-keeps every asset URL subpath-safe):
+This static application sends user-configured keys directly to their endpoints.
+Use user-owned/restricted keys and CORS-compatible endpoints. A public product
+that owns provider credentials needs a gateway; GitHub Pages cannot hide a key
+embedded in frontend code. No provider credentials are bundled.
 
-```sh
-npm run build   # outputs dist/ with relative asset paths
-```
+## Deployment and verification
 
+`.github/workflows/deploy-pages.yml` runs typecheck/build and deploys `main` to
+GitHub Pages. Relative build asset URLs support the `/agent-body/` project path.
 
-- Minimal scene walkthrough: https://iwsdk.dev/guides/01b-minimal-scene.html
-- XR testing and IWER (IWSDK's browser-based XR emulator) controls:
-  https://iwsdk.dev/guides/02-testing-experience.html#iwer-controls
+Before runtime verification run `npm run --if-present typecheck`. Inspect desktop
+with the managed runtime screenshot, not an editor-only render. Inspect an active
+MR/VR session before making immersive interaction claims. Emulated results do not
+establish headset performance, passthrough fidelity, native keyboard support or
+external-provider audio quality.

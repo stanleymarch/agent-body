@@ -14,19 +14,12 @@ import type {
   MemoryKind,
   MemoryRecord,
 } from './contracts';
+import { agentSettingsSchema, DEFAULT_SETTINGS } from './settings.js';
 
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
 
-export const agentSettingsSchema = z.object({
-  agentName: z.string().min(1),
-  idleMotion: z.boolean(),
-  gazeTracking: z.boolean(),
-  modelEndpoint: z.string(),
-  modelId: z.string(),
-  modelApiKey: z.string(),
-});
 
 export const memoryKindSchema = z.enum(['note', 'fact', 'chat']);
 
@@ -35,16 +28,9 @@ export const memoryRecordSchema = z.object({
   text: z.string().min(1),
   kind: memoryKindSchema,
   createdAt: z.number().int().nonnegative(),
+  role: z.enum(['user', 'assistant']).optional(),
 });
 
-export const DEFAULT_SETTINGS: AgentSettings = {
-  agentName: 'Ava',
-  idleMotion: true,
-  gazeTracking: true,
-  modelEndpoint: '',
-  modelId: '',
-  modelApiKey: '',
-};
 
 const SETTINGS_KEY = 'agent';
 
@@ -171,12 +157,13 @@ class AgentStateStore implements AgentState {
     };
   }
 
-  async addMemory(text: string, kind: MemoryKind): Promise<MemoryRecord> {
+  async addMemory(text: string, kind: MemoryKind, role?: 'user' | 'assistant'): Promise<MemoryRecord> {
     await this.ready;
     const record: MemoryRecord = memoryRecordSchema.parse({
       text: text.trim(),
       kind,
       createdAt: Date.now(),
+      role,
     });
     if (this.db) {
       const id = await this.db.memories.add(record);

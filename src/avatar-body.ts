@@ -6,21 +6,24 @@
  */
 
 import type { Object3D } from '@iwsdk/core';
-import type { AvatarBody, AvatarExpressionName } from './agent/contracts.js';
+import type { AvatarBody, AvatarCue, AvatarExpressionName } from './agent/contracts.js';
 
 /**
- * Live driver bound by `AvatarSystem` once the VRM is loaded. `null` before
- * load (and across HMR reloads until the new system rebinds), which makes the
- * exported `avatarBody` singleton a safe no-op facade for early consumers.
+ * Live driver bound by `AvatarSystem` before loading starts. The driver retains
+ * attention/idle commands while a model loads; availability reflects the actual
+ * loaded VRM, not just whether the facade has a driver.
  */
 let impl: AvatarBody | null = null;
 
 /**
- * Called exactly once per AvatarSystem lifetime by `src/avatar.ts` when the
- * VRM scene graph exists and expressions can be driven.
+ * Binds one system-owned driver. Teardown only unbinds that same driver, so an
+ * obsolete system cannot disconnect a newer system during hot replacement.
  */
-export function bindAvatarBody(body: AvatarBody): void {
+export function bindAvatarBody(body: AvatarBody): () => void {
   impl = body;
+  return () => {
+    if (impl === body) impl = null;
+  };
 }
 
 /**
@@ -30,10 +33,16 @@ export function bindAvatarBody(body: AvatarBody): void {
  */
 export const avatarBody: AvatarBody = {
   get available(): boolean {
-    return impl != null;
+    return impl?.available ?? false;
   },
   setExpression(name: AvatarExpressionName, weight: number): void {
     impl?.setExpression(name, weight);
+  },
+  get performing(): boolean {
+    return impl?.performing ?? false;
+  },
+  playCue(cue: AvatarCue | null): void {
+    impl?.playCue(cue);
   },
   setTalking(active: boolean): void {
     impl?.setTalking(active);

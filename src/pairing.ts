@@ -6,13 +6,14 @@
  */
 
 import type { AgentSettings } from './agent/contracts.js';
+import { agentSettingsSchema } from './agent/settings.js';
 
 /**
- * One-time encrypted settings transfer from a desktop browser to a headset.
+ * Encrypted settings transfer from a desktop browser to a headset.
  *
- * Flow: the desktop app encrypts the model settings with AES-GCM under a key
- * derived (PBKDF2-SHA256) from a short one-time PIN, and renders the result as
- * a QR code containing `<app-url>#pair=v1.<salt>.<iv>.<ciphertext>`. Any QR
+ * Flow: the desktop app encrypts character and connection settings with AES-GCM under a key
+ * derived (PBKDF2-SHA256) from a short PIN, and renders the result as
+ * a QR code containing `<app-url>#pair=v2.<salt>.<iv>.<ciphertext>`. Any QR
  * scanner on the headset (or a copied link) opens that URL in the headset's
  * browser; the app then asks for the 6-digit PIN, decrypts, and writes the
  * settings into local IndexedDB. The API key never appears in clear text in
@@ -24,7 +25,7 @@ import type { AgentSettings } from './agent/contracts.js';
  * `agentState.updateSettings`, which re-parses every patch with zod.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const PBKDF2_ITERATIONS = 300_000;
 const SALT_BYTES = 16;
 const IV_BYTES = 12;
@@ -43,10 +44,7 @@ export interface PairingOffer {
 }
 
 interface PairingPayload {
-  agentName: string;
-  modelEndpoint: string;
-  modelId: string;
-  modelApiKey: string;
+  settings: AgentSettings;
   exp: number;
 }
 
@@ -176,10 +174,7 @@ export async function createPairingOffer(
   const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
   const payload: PairingPayload = {
-    agentName: settings.agentName,
-    modelEndpoint: settings.modelEndpoint,
-    modelId: settings.modelId,
-    modelApiKey: settings.modelApiKey,
+    settings: { ...settings },
     exp: nowMs + PAIRING_TTL_MS,
   };
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
@@ -244,18 +239,9 @@ export async function consumePairingUrl(
   if (typeof payload.exp !== 'number' || payload.exp < nowMs) {
     throw new Error('This pairing link has expired. Generate a new QR code.');
   }
-  const patch: Partial<AgentSettings> = {};
-  for (const field of [
-    'agentName',
-    'modelEndpoint',
-    'modelId',
-    'modelApiKey',
-  ] as const) {
-    const value = payload[field];
-    if (typeof value !== 'string') {
-      throw new Error('Pairing payload contains invalid settings.');
-    }
-    patch[field] = value;
+  const parsedSettings = agentSettingsSchema.safeParse(payload.settings);
+  if (!parsedSettings.success) {
+    throw new Error('Pairing payload contains invalid settings.');
   }
-  return patch;
+  return parsedSettings.data;
 }

@@ -1,135 +1,44 @@
-<!--
-  Agent status panel. Panel, Divider, Button, ButtonIcon, and ButtonLabel come
-  from the bundled Horizon kit; StickyNote, PersonStanding, and Eye are bundled
-  Lucide icon components. Numeric sizes are centimetres.
--->
 <style>
-  .panel-root {
-    flex-direction: column;
-    width: 344px;
-  }
-  .panel-content {
-    flex-direction: column;
-    padding-left: 24px;
-    padding-right: 24px;
-    padding-top: 16px;
-  }
-  .heading {
-    height: 30px;
-    text-align: center;
-    font-size: 20px;
-    font-weight: 700;
-    line-height: 24px;
-    color: #272727;
-  }
-  .heading:dark {
-    color: rgba(255, 255, 255, 0.9);
-  }
-  .meta {
-    margin-top: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 16px;
-    color: #5e5e5e;
-  }
-  .meta:dark {
-    color: rgba(255, 255, 255, 0.7);
-  }
-  .memory {
-    margin-top: 6px;
-    font-size: 13px;
-    line-height: 16px;
-    color: #272727;
-  }
-  .memory:dark {
-    color: rgba(255, 255, 255, 0.85);
-  }
-  .settings-view {
-    flex-direction: column;
-    display: none;
-  }
-  .settings-help {
-    margin-top: 8px;
-    font-size: 13px;
-    line-height: 17px;
-    color: #5e5e5e;
-  }
-  .settings-help:dark {
-    color: rgba(255, 255, 255, 0.7);
-  }
-  .button {
-    justify-content: flex-start;
-    margin-left: 24px;
-    margin-right: 24px;
-    margin-top: 10px;
-  }
-  .button-label {
-    transform-translate-y: 1px;
-  }
-  .last {
-    margin-bottom: 24px;
-  }
+  .workspace { flex-direction: column; width: 100; padding-top: 4; padding-bottom: 4; padding-left: 4; padding-right: 4; background-color: #142137; border-radius: 3; }
+  .title { font-size: 3.6; font-weight: 700; color: #f0f4ff; margin-bottom: 1; }
+  .status { font-size: 2.2; color: #adbedb; margin-bottom: 2; }
+  .row { width: 92; flex-direction: row; gap: 1; margin-bottom: 2; }
+  .nav { width: 22; min-width: 0; padding-left: 1; padding-right: 1; flex-grow: 1; height: 7; background-color: #2a3d5c; border-radius: 1.5; justify-content: center; }
+  .exit { width: 92; }
+  .label { font-size: 2.6; color: #ecf2ff; }
+  .body { font-size: 2.5; line-height: 1.4; color: #d8e3f7; margin-top: 2; margin-bottom: 3; }
+  .field { width: 92; height: 7; margin-bottom: 1.2; padding-left: 2; padding-right: 2; background-color: #263954; border-radius: 1.3; justify-content: flex-start; }
+  .action { width: 28; min-width: 0; padding-left: 2; padding-right: 2; height: 7; flex-grow: 1; background-color: #526ea7; border-radius: 1.5; justify-content: center; }
 </style>
-<Panel class="panel-root">
-  <div id="memory-content" class="panel-content">
-    <div id="agent-name" class="heading">Agent</div>
-    <div id="memory-count" class="meta">0 memories</div>
-    <Divider></Divider>
-    <div id="memory-item-0" class="memory">-</div>
-    <div id="memory-item-1" class="memory">-</div>
-    <div id="memory-item-2" class="memory">-</div>
-    <div id="memory-item-3" class="memory">-</div>
+<div class="workspace">
+  <div id="workspace-title" class="title">Ava</div>
+  <div id="workspace-status" class="status">Agent Body</div>
+  <div class="row">
+    <Button id="nav-chat" class="nav"><ButtonLabel class="label">Chat</ButtonLabel></Button>
+    <Button id="nav-character" class="nav"><ButtonLabel class="label">Character</ButtonLabel></Button>
+    <Button id="nav-connections" class="nav"><ButtonLabel class="label">Connect</ButtonLabel></Button>
+    <Button id="nav-memory" class="nav"><ButtonLabel class="label">Memory</ButtonLabel></Button>
   </div>
-  <Button id="btn-add-note" class="button">
-    <ButtonIcon>
-      <StickyNote></StickyNote>
-    </ButtonIcon>
-    <ButtonLabel class="button-label">Add Note</ButtonLabel>
-  </Button>
-  <Button id="btn-toggle-idle" class="button">
-    <ButtonIcon>
-      <PersonStanding></PersonStanding>
-    </ButtonIcon>
-    <ButtonLabel id="btn-toggle-idle-label" class="button-label">Idle: On</ButtonLabel>
-  </Button>
-  <Button id="btn-toggle-gaze" class="button">
-    <ButtonIcon>
-      <Eye></Eye>
-    </ButtonIcon>
-    <ButtonLabel id="btn-toggle-gaze-label" class="button-label">Gaze: On</ButtonLabel>
-  </Button>
-  <Button id="btn-open-settings" class="button last">
-    <ButtonLabel class="button-label">Model Settings</ButtonLabel>
-  </Button>
-  <div id="settings-view" class="settings-view">
-    <div class="panel-content">
-      <div class="heading">Model Settings</div>
-      <Divider></Divider>
-      <div id="settings-summary" class="meta">Offline brain</div>
-      <div id="settings-help" class="settings-help">
-        Select a field. Quest opens its system keyboard.
-      </div>
-    </div>
-    <Button id="btn-edit-endpoint" class="button">
-      <ButtonLabel id="settings-endpoint-label" class="button-label">
-        Endpoint: Not set
-      </ButtonLabel>
-    </Button>
-    <Button id="btn-edit-model" class="button">
-      <ButtonLabel id="settings-model-label" class="button-label">
-        Model: Not set
-      </ButtonLabel>
-    </Button>
-    <Button id="btn-edit-key" class="button">
-      <ButtonLabel id="settings-key-label" class="button-label">
-        API Key: Not set
-      </ButtonLabel>
-    </Button>
-    <Button id="btn-clear-key" class="button">
-      <ButtonLabel class="button-label">Clear API Key</ButtonLabel>
-    </Button>
-    <Button id="btn-back-settings" class="button last">
-      <ButtonLabel class="button-label">Back</ButtonLabel>
-    </Button>
+  <div id="connection-tabs" class="row">
+    <Button id="sub-llm" class="nav"><ButtonLabel class="label">LLM</ButtonLabel></Button>
+    <Button id="sub-stt" class="nav"><ButtonLabel class="label">STT</ButtonLabel></Button>
+    <Button id="sub-tts" class="nav"><ButtonLabel class="label">TTS</ButtonLabel></Button>
+    <Button id="sub-transfer" class="nav"><ButtonLabel class="label">QR</ButtonLabel></Button>
   </div>
-</Panel>
+  <div id="workspace-body" class="body">Select Chat, Character or Connections.</div>
+  <Button id="field-0" class="field"><ButtonLabel id="field-label-0" class="label">Field</ButtonLabel></Button>
+  <Button id="field-1" class="field"><ButtonLabel id="field-label-1" class="label">Field</ButtonLabel></Button>
+  <Button id="field-2" class="field"><ButtonLabel id="field-label-2" class="label">Field</ButtonLabel></Button>
+  <Button id="field-3" class="field"><ButtonLabel id="field-label-3" class="label">Field</ButtonLabel></Button>
+  <Button id="field-4" class="field"><ButtonLabel id="field-label-4" class="label">Field</ButtonLabel></Button>
+  <Button id="field-5" class="field"><ButtonLabel id="field-label-5" class="label">Field</ButtonLabel></Button>
+  <div class="row">
+    <Button id="workspace-edit-chat" class="action"><ButtonLabel class="label">Write message</ButtonLabel></Button>
+    <Button id="workspace-listen" class="action"><ButtonLabel id="workspace-listen-label" class="label">Microphone</ButtonLabel></Button>
+    <Button id="workspace-save" class="action"><ButtonLabel class="label">Save</ButtonLabel></Button>
+    <Button id="workspace-test-voice" class="action"><ButtonLabel class="label">Test voice</ButtonLabel></Button>
+    <Button id="workspace-clear-key" class="action"><ButtonLabel class="label">Clear key</ButtonLabel></Button>
+  </div>
+  <div id="workspace-feedback" class="status"></div>
+  <Button id="workspace-exit" class="nav exit"><ButtonLabel class="label">Return to browser</ButtonLabel></Button>
+</div>

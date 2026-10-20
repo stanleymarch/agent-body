@@ -38,6 +38,20 @@ export interface AgentSettings {
    * IndexedDB; never bundled or synced.
    */
   modelApiKey: string;
+  /** Empty URL selects the bundled Ava VRM preset. */
+  characterVrmUrl: string;
+  characterPrompt: string;
+  characterScale: number;
+  speechLanguage: string;
+  ttsProvider: 'off' | 'browser' | 'openai';
+  ttsEndpoint: string;
+  ttsModel: string;
+  ttsVoice: string;
+  ttsApiKey: string;
+  sttProvider: 'off' | 'browser' | 'openai';
+  sttEndpoint: string;
+  sttModel: string;
+  sttApiKey: string;
 }
 
 export type MemoryKind = 'note' | 'fact' | 'chat';
@@ -47,6 +61,7 @@ export interface MemoryRecord {
   text: string;
   kind: MemoryKind;
   createdAt: number; // epoch ms
+  role?: 'user' | 'assistant';
 }
 
 export interface AgentState {
@@ -58,7 +73,7 @@ export interface AgentState {
   /** Subscription; returns unsubscribe. */
   onSettingsChanged(cb: (settings: AgentSettings) => void): () => void;
 
-  addMemory(text: string, kind: MemoryKind): Promise<MemoryRecord>;
+  addMemory(text: string, kind: MemoryKind, role?: 'user' | 'assistant'): Promise<MemoryRecord>;
   recentMemories(limit: number): Promise<MemoryRecord[]>;
   searchMemories(query: string, limit: number): Promise<MemoryRecord[]>;
   clearMemories(): Promise<void>;
@@ -83,6 +98,24 @@ export type AvatarExpressionName =
   | 'relaxed'
   | 'surprised'
   | (string & {});
+/** Reply-driven emotion vocabulary (VRM 1.0 preset expressions). */
+export type CueEmotion =
+  | 'neutral'
+  | 'happy'
+  | 'angry'
+  | 'sad'
+  | 'relaxed'
+  | 'surprised';
+
+/** Reply-driven gesture vocabulary (procedural, no animation clips). */
+export type CueGesture = 'none' | 'wave' | 'nod' | 'shake' | 'think' | 'bow';
+
+/** One avatar performance delivered alongside a model reply. */
+export interface AvatarCue {
+  readonly emotion: CueEmotion;
+  readonly gesture: CueGesture;
+}
+
 
 export interface AvatarBody {
   /** True once the VRM scene graph exists and expressions can be driven. */
@@ -104,4 +137,11 @@ export interface AvatarBody {
   setAttentionTarget(target: Object3D | null): void;
   /** Disable/enable procedural idle (breath/sway). Blink always stays. */
   setIdleMotion(enabled: boolean): void;
+  /**
+   * Perform one reply-driven emotion + gesture. `null` clears the current
+   * cue and restores the rest pose. Ignored while unavailable.
+   */
+  playCue(cue: AvatarCue | null): void;
+  /** True while a cued emotion or gesture is still running. */
+  readonly performing: boolean;
 }

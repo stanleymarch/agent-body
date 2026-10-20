@@ -29,8 +29,9 @@ const AMBIENT_EXPRESSIONS: AvatarExpressionName[] = [
  * Two-state machine (`phase === 0` waiting, `phase > 0` pulsing) with all
  * state preallocated on fields; `Math.random()` is drawn only on state
  * transitions (timer firing), never per frame. Skips entirely while the
- * avatar body is unavailable. Blink reinforcement is intentionally absent —
- * `AvatarSystem` owns blinking.
+ * avatar body is unavailable or a reply-driven cue is performing, so the
+ * two never fight over the same expression weights. Blink reinforcement
+ * is intentionally absent — `AvatarSystem` owns blinking.
  *
  * Not self-registered: the integrator adds an `AmbientSystem` instance to
  * the world alongside `AvatarSystem`.
@@ -46,7 +47,7 @@ export class AmbientSystem extends createSystem({}) {
   }
 
   update(delta: number): void {
-    if (!avatarBody.available) {
+    if (!avatarBody.available || avatarBody.performing) {
       return;
     }
     if (this.phase === 0) {

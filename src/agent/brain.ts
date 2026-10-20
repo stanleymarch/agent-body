@@ -11,6 +11,13 @@ import { z } from 'zod';
 import { avatarBody } from '../avatar-body.js';
 import { agentState } from './state.js';
 import { hush, speak } from './tts.js';
+import {
+  buildCueTag,
+  CueStreamFilter,
+  pickOfflineCue,
+  publishAvatarCue,
+} from './cues.js';
+import type { AvatarCue } from './contracts.js';
 
 const MAX_STEPS = 4;
 const CHUNK_DELAY_MS = 24;
@@ -28,13 +35,14 @@ const memorySearchInputSchema = z.object({
 export interface AgentBrain {
   /**
    * Send one user message. Persists it as a chat memory, streams the reply
-   * (driving the avatar's mouth), persists the assistant reply, and returns
-   * the full reply text.
+   * (driving the avatar's mouth), performs the reply's cue, persists the
+   * assistant reply, and returns the full reply text with the cue tag
+   * already stripped.
    */
   send(text: string): Promise<string>;
   /** 'live' when a model endpoint is configured, else scripted offline mode. */
   readonly mode: 'live' | 'scripted';
-  /** True while a reply is streaming. */
+  /** True throughout sending, reply generation, and memory persistence. */
   readonly busy: boolean;
 }
 
@@ -47,17 +55,23 @@ class ScriptedBrain {
       recalled.length > 0
         ? ` The closest thing I remember is: "${recalled[0]!.text}".`
         : ' I have no memories close to that yet; add a note and I will remember.';
-    const reply = `${settings.agentName} (offline brain): I heard "${text}". Configure a model endpoint in settings to give me a real mind.${memoryLine}`;
+    const cue = pickOfflineCue(text);
+    const reply = `${buildCueTag(cue)}${settings.agentName} (offline brain): I heard "${text}". Configure a model endpoint in settings to give me a real mind.${memoryLine}`;
+    avatarBody.playCue(cue);
+    publishAvatarCue(cue);
     avatarBody.setTalking(true);
+    // Same tag path as the live stream: mouth, memory and UI never see the tag.
+    const filter = new CueStreamFilter();
     for (const word of reply.split(/(\s+)/u)) {
-      avatarBody.speakChunk(word);
+      const visible = filter.push(word);
+      if (visible.length > 0) avatarBody.speakChunk(visible);
       const { promise: tick, resolve } = Promise.withResolvers<void>();
       setTimeout(resolve, CHUNK_DELAY_MS);
       await tick;
     }
-    avatarBody.setTalking(false);
-    speak(reply);
-    return reply;
+    const tail = filter.end();
+    if (tail.length > 0) avatarBody.speakChunk(tail);
+    return filter.text;
   }
 }
 
@@ -83,15 +97,31 @@ class AgentBrainImpl implements AgentBrain {
     if (trimmed.length === 0 || this.streaming) {
       return '';
     }
-    await agentState.addMemory(trimmed, 'chat');
-    if (this.mode === 'scripted') {
-      const reply = await new ScriptedBrain().send(trimmed);
-      await agentState.addMemory(reply, 'chat');
+    // Guard before the first await, including offline replies and DB writes.
+    this.streaming = true;
+    // Clear the previous turn's badge before the new cue arrives.
+    publishAvatarCue(null);
+    try {
+      hush();
+      await agentState.addMemory(trimmed, 'chat', 'user');
+      const reply = this.mode === 'scripted'
+        ? await new ScriptedBrain().send(trimmed)
+        : await this.sendLive(trimmed);
+      if (reply.length > 0) {
+        await agentState.addMemory(reply, 'chat', 'assistant');
+        // Speech failures are published by onSpeechStatus. Do not lose the
+        // completed text reply or leave an unhandled background rejection.
+        void speak(reply).catch(() => {
+          // The speech module has already notified its diagnostic subscribers.
+        });
+      }
       this.remember('user', trimmed);
       this.remember('assistant', reply);
       return reply;
+    } finally {
+      avatarBody.setTalking(false);
+      this.streaming = false;
     }
-    return this.sendLive(trimmed);
   }
 
   private async sendLive(userText: string): Promise<string> {
@@ -106,20 +136,22 @@ class AgentBrainImpl implements AgentBrain {
     const recalled = await agentState.searchMemories(userText, 3);
     const memoryBlock =
       recalled.length > 0
-        ? recalled.map((m) => `- ${m.text}`).join('\n')
+        ? recalled.map((m) => m.text).join('\n')
         : '(no relevant memories)';
     const system = [
       `You are ${settings.agentName}, an embodied agent living in the user's mixed-reality space.`,
+      settings.characterPrompt,
       `Today is ${new Date().toISOString().slice(0, 10)}.`,
       'Keep replies short and conversational (1–3 sentences) unless asked for more.',
+      "Begin every reply with exactly one performance tag [[emotion|gesture]] where emotion is one of neutral, happy, angry, sad, relaxed, surprised and gesture is one of none, wave, nod, shake, think, bow. Pick the tag that matches the reply's tone; it is stripped before anyone sees the text. Example: [[happy|wave]] Great to see you!",
       'Relevant long-term memories for this turn:',
       memoryBlock,
       'You can save important facts with memory_write and look up older memories with memory_search.',
     ].join('\n');
 
-    this.streaming = true;
-    hush();
     avatarBody.setTalking(true);
+    const filter = new CueStreamFilter();
+    let cuePublished = false;
     let full = '';
     try {
       const result = streamText({
@@ -154,28 +186,38 @@ class AgentBrainImpl implements AgentBrain {
         if (chunk.length === 0) {
           continue;
         }
-        full += chunk;
-        avatarBody.speakChunk(chunk);
+        const visible = filter.push(chunk);
+        if (visible.length > 0) {
+          full += visible;
+          avatarBody.speakChunk(visible);
+        }
+        if (!cuePublished && filter.cue != null) {
+          cuePublished = true;
+          avatarBody.playCue(filter.cue);
+          publishAvatarCue(filter.cue);
+        }
       }
-    } catch (error) {
-      console.error(
-        '[brain] live model failed; reply is an error notice',
-        error,
-      );
+      const tail = filter.end();
+      if (tail.length > 0) {
+        full += tail;
+        avatarBody.speakChunk(tail);
+      }
+      if (!cuePublished && filter.cue != null) {
+        avatarBody.playCue(filter.cue);
+        publishAvatarCue(filter.cue);
+      }
+    } catch {
       full =
         full.length > 0
           ? full
           : `${settings.agentName}: my model endpoint failed; check settings.modelEndpoint/modelId/key.`;
+      const failed: AvatarCue = { emotion: 'sad', gesture: 'shake' };
+      avatarBody.playCue(failed);
+      publishAvatarCue(failed);
     } finally {
       avatarBody.setTalking(false);
-      this.streaming = false;
+      // The outer send() owns the busy guard through memory persistence.
     }
-    if (full.length > 0) {
-      speak(full);
-      await agentState.addMemory(full, 'chat');
-    }
-    this.remember('user', userText);
-    this.remember('assistant', full);
     return full;
   }
 

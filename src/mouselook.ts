@@ -10,7 +10,6 @@ import { createSystem, VisibilityState } from '@iwsdk/core';
 const RADIANS_PER_PIXEL = 0.0025;
 const PITCH_LIMIT = Math.PI / 2 - 0.01;
 const RIGHT_BUTTON = 2;
-const EYE_HEIGHT = 1.6;
 
 /**
  * App-owned mouse look for the browser (non-immersive) side of the
@@ -29,7 +28,8 @@ export class BrowserMouseLookSystem extends createSystem({}) {
   private pitch = 0;
 
   init(): void {
-    this.applyCameraPose();
+    this.camera.rotation.reorder('YXZ');
+    this.pitch = this.camera.rotation.x;
 
     const canvas = this.renderer.domElement as HTMLCanvasElement;
 
@@ -68,7 +68,7 @@ export class BrowserMouseLookSystem extends createSystem({}) {
       this.player.rotateY(-event.movementX * RADIANS_PER_PIXEL);
       const nextPitch = this.pitch - event.movementY * RADIANS_PER_PIXEL;
       this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, nextPitch));
-      this.applyCameraPose();
+      this.camera.rotation.x = this.pitch;
     };
 
     canvas.addEventListener('pointerdown', onPointerDown);
@@ -101,9 +101,4 @@ export class BrowserMouseLookSystem extends createSystem({}) {
     );
   }
 
-  private applyCameraPose(): void {
-    this.camera.position.y = EYE_HEIGHT;
-    this.camera.rotation.set(this.pitch, 0, 0);
-    this.camera.updateProjectionMatrix();
-  }
 }

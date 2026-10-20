@@ -30,27 +30,10 @@ export default defineAssets({
     name: 'Plant Sansevieria',
     priority: 'lazy',
   },
-  robot: {
-    url: stockAssetUrl('robot', 'robot.gltf'),
-    type: AssetType.GLTF,
-    name: 'Robot',
-    priority: 'lazy',
-  },
-  'welcome-panel': {
-    url: publicAssetUrl('ui/welcome.uikitml'),
-    type: AssetType.UIKitML,
-    name: 'Welcome Panel',
-  },
   'agent-panel': {
     url: publicAssetUrl('ui/agent.uikitml'),
     type: AssetType.UIKitML,
     name: 'Agent Panel',
-  },
-  'webxr-banner': {
-    url: publicAssetUrl('gltf/webxr-banner/banner.gltf'),
-    type: AssetType.GLTF,
-    name: 'WebXR Banner',
-    priority: 'lazy',
   },
   'locomotion-floor': createLocomotionFloor(),
   'vr-space': createVRSpace(),
