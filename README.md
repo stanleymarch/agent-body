@@ -33,7 +33,9 @@ panel. Cyrillic text renders through bundled Noto Sans (SIL OFL 1.1,
 
 `window.__agentBody` exists only in development builds.
 
-## Avatar performance
+## Free OpenRouter preset: proof, not branding
+
+The default and the **OpenRouter free preset** LLM is `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` on `https://openrouter.ai/api/v1` because that exact model answered a labelled image fixture end-to-end (the known caption `BLUE KEY 42` was read correctly from a real JPEG in the real multimodal request, with exactly one request upload). Gemma 4 31B free is still listed as a selectable model id, but it returned shared-pool upstream `429`s for every text and image request during this verification window, so it cannot be the working default. Fish `s2.1-pro-free:free` speech is proven through real `/audio/speech` MP3 bytes; it needs its own explicit key copy after the preset. No key is bundled. Shared-pool free models can rate-limit at any time; provider errors are reported, never answered by invention.
 
 The avatar performs alongside replies through an **optional typed tool**, not
 inline text tags. The live system prompt offers `avatar_perform(emotion,
@@ -49,9 +51,7 @@ guard against factual errors in the model's answer.
   (`public/animations/ATTRIBUTION.txt` pins sources, licenses and SHA-256):
   idle, speaking, listening-nod, thinking, kneeling apology (bow),
   encouragement (happy), startled (surprised). Wave and shake remain procedural
-  — labelled as such, never described as clips.
-- Speaking animation follows **actual audio playback**, not network token
-  generation; mouth movement is approximate viseme timing.
+
 - Clips restore the exact captured normalized-skeleton rest pose on completion,
   cancellation, and avatar replacement. A missing or failed clip falls back to
   procedural motion and logs it in development.

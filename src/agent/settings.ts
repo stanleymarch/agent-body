@@ -25,7 +25,7 @@ export const agentSettingsSchema = z.object({
 /** Public model selection only. Credentials are never included or copied. */
 export const OPENROUTER_FREE_PRESET = {
   modelEndpoint: 'https://openrouter.ai/api/v1',
-  modelId: 'google/gemma-4-31b-it:free',
+  modelId: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
   ttsProvider: 'openai',
   ttsEndpoint: 'https://openrouter.ai/api/v1',
   ttsModel: 'fish-audio/s2.1-pro-free:free',
