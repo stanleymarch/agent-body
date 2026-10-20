@@ -111,7 +111,9 @@ map.
 **Asset rights:** the bundled VRM's metadata declares restricted
 redistribution/modification and personal non-profit use. Its presence is not
 proof of redistribution permission; verify before further public redistribution
-or commercial use. VRMA clips are CC0 (see `public/animations/`); Noto fonts are
+or commercial use. VRMA clips are CC0 (see `public/animations/`); the Sansevieria
+plant is MIT from `@iwsdk/example-assets` 0.4.2 and is bundled under
+`public/assets/plant-sansevieria/` (attribution alongside); Noto fonts are
 SIL OFL 1.1.
 
 ## Settings transfer by QR
@@ -119,7 +121,8 @@ SIL OFL 1.1.
 **Connections / Transfer** encrypts the complete saved configuration
 (AES-GCM, PBKDF2-SHA256 with 300k iterations from a separate six-digit PIN,
 10-minute TTL, URL fragment). The receiver (same UIKitML panel) asks for the
-PIN; the fragment is captured and cleared before world bootstrap. Not a
+PIN; the fragment is captured and cleared before world bootstrap, and again when
+a pairing link is opened in an already-running tab. Not a
 server-enforced one-time link: copied ciphertext can be replayed within its
 lifetime and a six-digit PIN permits offline guessing. Treat QR + PIN as
 secrets. The app sends user-configured keys directly to their endpoints; use
@@ -135,4 +138,5 @@ passthrough, physical camera availability or native keyboard behavior. Verified
 in this revision on the emulator: real VRMA playback/restoration, Fish free
 speech end-to-end, request composition for Gemma free (blocked upstream by
 shared-pool 429 at test time), explicit-photo privacy path, native Horizon
-controls with Cyrillic.
+controls with Cyrillic, and the encrypted QR receive flow (link re-entry, PIN
+capped at six digits, wrong-PIN error, successful apply).

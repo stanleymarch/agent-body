@@ -22,6 +22,8 @@ interface AgentReply { text: string; cue: AvatarCue | null }
 export interface AgentBrain {
   /** Explicit look-at-this commands attach one ephemeral camera frame. */
   send(text: string): Promise<string>;
+  /** Drop the model-side dialogue history and abort an in-flight request. */
+  resetConversation(): void;
   readonly mode: 'live' | 'scripted';
   readonly busy: boolean;
 }
@@ -46,6 +48,9 @@ function modelError(error: unknown): Error {
 class AgentBrainImpl implements AgentBrain {
   private streaming = false;
   private readonly history: { role: 'user' | 'assistant'; content: string }[] = [];
+  private active: AbortController | null = null;
+  /** Bumped on reset so an aborted reply cannot write history or memory. */
+  private generation = 0;
   get mode(): 'live' | 'scripted' {
     const settings = agentState.getSettings();
     return settings.modelEndpoint.trim() && settings.modelId.trim() &&
@@ -53,34 +58,55 @@ class AgentBrainImpl implements AgentBrain {
   }
   get busy(): boolean { return this.streaming; }
 
+  /** Clear what the model remembers, not just what the panel lists. */
+  resetConversation(): void {
+    this.history.length = 0;
+    this.generation++;
+    this.active?.abort();
+    this.active = null;
+  }
+
   async send(text: string): Promise<string> {
     const trimmed = text.trim();
     if (!trimmed || this.streaming) return '';
     this.streaming = true;
+    const generation = ++this.generation;
+    const controller = new AbortController();
+    this.active = controller;
     publishAvatarCue(null);
     try {
       hush();
       await agentState.ready;
+      if (generation !== this.generation) return '';
       const wantsPhoto = requestsPhoto(trimmed);
       if (wantsPhoto && this.mode !== 'live') throw new Error('Для снимка и анализа сначала подключите модель со входом изображений в Connections.');
       // A frame exists only for this request. It is never put in memory/history.
       const photo = wantsPhoto ? await capturePhoto() : undefined;
+      if (generation !== this.generation) return '';
       await agentState.addMemory(trimmed, 'chat', 'user');
       const reply: AgentReply = this.mode === 'live'
-        ? await this.sendLive(trimmed, photo)
+        ? await this.sendLive(trimmed, photo, controller.signal)
         : { text: 'Офлайн-демо: показана реакция аватара, но языковая модель не подключена. Выберите OpenRouter free preset и введите свой ключ в Connections.', cue: pickOfflineCue(trimmed) };
+      if (generation !== this.generation) return '';
       if (reply.text) {
         await agentState.addMemory(reply.text, 'chat', 'assistant');
+        if (generation !== this.generation) return '';
         // Actual playback, not network tokens, owns mouth animation and cue start.
         void speak(reply.text, reply.cue).catch(() => { /* Speech module reports the actionable failure. */ });
         this.remember('user', trimmed);
         this.remember('assistant', reply.text);
       }
       return reply.text;
-    } finally { this.streaming = false; }
+    } catch (error) {
+      if (controller.signal.aborted || generation !== this.generation) return '';
+      throw error;
+    } finally {
+      if (this.active === controller) this.active = null;
+      this.streaming = false;
+    }
   }
 
-  private async sendLive(userText: string, photo?: { dataUrl: string; source: string; capturedAt: number }): Promise<AgentReply> {
+  private async sendLive(userText: string, photo: { dataUrl: string; source: string; capturedAt: number } | undefined, signal: AbortSignal): Promise<AgentReply> {
     const settings = agentState.getSettings();
     const provider = createOpenAICompatible({ name: 'agent-body-endpoint', baseURL: settings.modelEndpoint, apiKey: settings.modelApiKey || 'none' });
     const recalled = await agentState.searchMemories(userText, 3);
@@ -104,7 +130,7 @@ class AgentBrainImpl implements AgentBrain {
     try {
       const result = streamText({
         model: provider.chatModel(settings.modelId), system, messages,
-        stopWhen: stepCountIs(MAX_STEPS), maxRetries: 0, maxOutputTokens: 2048,
+        stopWhen: stepCountIs(MAX_STEPS), maxRetries: 0, maxOutputTokens: 2048, abortSignal: signal,
         onError: ({ error }) => { failure = error; },
         tools: {
           avatar_perform: tool({

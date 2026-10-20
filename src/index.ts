@@ -17,6 +17,11 @@ import { avatarBody } from './avatar-body.js';
 import { WorkspaceSystem } from './workspace.js';
 import { bindPerception } from './agent/perception.js';
 
+// The workspace palette is light and the custom text colors assume a light
+// surface. The color scheme is pinned in iwsdk.config.json
+// (world.features.spatialUI.preferredColorScheme) so a dark OS/browser scheme
+// cannot paint dark text on a dark panel.
+
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
   projectOptions,

@@ -4,11 +4,11 @@ import { agentState } from './agent/state.js';
 import { OPENROUTER_FREE_PRESET } from './agent/settings.js';
 import { agentBrain } from './agent/brain.js';
 import type { AgentSettings, MemoryRecord } from './agent/contracts.js';
-import { speak, getSpeechStatus, onSpeechStatus } from './agent/tts.js';
+import { speak, hush, getSpeechStatus, onSpeechStatus } from './agent/tts.js';
 import { startListening, cancelListening, type ListeningSession } from './agent/stt.js';
 import { getCharacterStatus, onCharacterStatus, BUNDLED_CHARACTER_PRESET } from './agent/character.js';
 import { getAvatarCue, onAvatarCue } from './agent/cues.js';
-import { getPerceptionStatus, onPerceptionStatus, getRoomContext } from './agent/perception.js';
+import { getPerceptionStatus, onPerceptionStatus, getRoomSummary } from './agent/perception.js';
 import { createPairingOffer, consumePairingUrl, parsePairingFragment, type PairingOffer } from './pairing.js';
 import { CHARACTER_FIELDS, CONNECTION_FIELDS, PROVIDER_LABELS, type SettingField, type WorkspaceTab, type ConnectionTab } from './workspace-fields.js';
 import './workspace.css';
@@ -80,6 +80,14 @@ export class WorkspaceSystem extends createSystem({}) {
     let input: HTMLTextAreaElement | HTMLInputElement = textInput;
     const setText = (id: string, text: string): void => { panel.requireElementById(id).setProperties({ text }); };
     const show = (id: string, visible: boolean): void => { panel.requireElementById(id).setProperties({ display: visible ? 'flex' : 'none' }); };
+    // Horizon buttons paint their own hover/pressed theme layers above inline
+    // colours, so a clicked chip would keep the dark pressed fill. Resolve the
+    // same colour for every pointer state instead of only the resting one.
+    const tintChip = (id: string, background: string): void => {
+      const fill = { backgroundColor: background, hover: { backgroundColor: background }, active: { backgroundColor: background } };
+      panel.requireElementById(id).setProperties(fill);
+      panel.requireElementById(`${id}-label`).setProperties({ color: '#202124', hover: { color: '#202124' }, active: { color: '#202124' } });
+    };
     const feedback = (text: string, error = false): void => {
       if (disposed) return;
       setText('workspace-feedback', text);
@@ -102,8 +110,7 @@ export class WorkspaceSystem extends createSystem({}) {
     };
     const visibleRecords = (): MemoryRecord[] => records.filter((record) => tab === 'chat' ? record.kind === 'chat' : record.kind !== 'chat');
     const refreshRoom = (): void => {
-      const room = getRoomContext();
-      setText('room-status', `Room geometry (not camera inference): ${room || 'Unavailable. Enter MR and allow scene access on a supported browser.'}`);
+      setText('room-status', getRoomSummary());
     };
     const render = (): void => {
       if (disposed) return;
@@ -116,16 +123,12 @@ export class WorkspaceSystem extends createSystem({}) {
       setText('workspace-title', `${settings.agentName} / ${TAB_LABELS[tab]}`);
       const motion = cue && (cue.emotion !== 'neutral' || cue.gesture !== 'none') ? ` / ${cue.emotion} / ${cue.gesture}` : '';
       setText('workspace-status', `${Object.keys(pending).length ? 'Unsaved changes / ' : ''}${agentBrain.mode === 'live' ? `LLM: ${settings.modelId}` : 'Offline demo / no authenticated LLM'}${motion}`);
-      for (const key of Object.keys(TAB_LABELS) as WorkspaceTab[]) {
-        panel.requireElementById(`nav-${key}`).setProperties({ backgroundColor: tab === key ? '#d2e3fc' : '#f1f3f4' });
-      }
-      for (const key of Object.keys(SUB_LABELS) as ConnectionTab[]) {
-        panel.requireElementById(`sub-${key}`).setProperties({ backgroundColor: sub === key ? '#d2e3fc' : '#f1f3f4' });
-      }
+      for (const key of Object.keys(TAB_LABELS) as WorkspaceTab[]) tintChip(`nav-${key}`, tab === key ? '#d2e3fc' : '#f1f3f4');
+      for (const key of Object.keys(SUB_LABELS) as ConnectionTab[]) tintChip(`sub-${key}`, sub === key ? '#d2e3fc' : '#f1f3f4');
       show('connection-tabs', connection);
       show('camera-status', tab === 'chat');
       show('room-status', tab === 'chat');
-      setText('camera-status', `Camera: ${cameraStatus}`);
+      setText('camera-status', cameraStatus);
       refreshRoom();
       let body = '';
       if (history) {
@@ -151,7 +154,10 @@ export class WorkspaceSystem extends createSystem({}) {
         if (!field) continue;
         const value = draft[field.key];
         const label = field.kind === 'secret' ? value ? 'Stored (hidden); blank retains' : 'Not set' : field.kind === 'toggle' ? value ? 'On' : 'Off' : field.kind === 'provider' ? PROVIDER_LABELS[String(value)] : String(value || 'Not set');
-        setText(`field-label-${index}`, `${field.label}: ${label.length > 58 ? `${label.slice(0, 55)}...` : label}`);
+        const text = `${field.label}: ${label}`;
+        // Field rows are one line high: truncate the assembled label (prefix
+        // included) so it cannot wrap into a second, clipped line.
+        setText(`field-label-${index}`, text.length > 62 ? `${text.slice(0, 59)}...` : text);
       }
       show('chat-actions', tab === 'chat' && !editing);
       show('settings-actions', fields.length > 0 && !editing);
@@ -159,7 +165,8 @@ export class WorkspaceSystem extends createSystem({}) {
       setText('workspace-test-label', sub === 'stt' && capture ? 'Stop test' : `Test ${sub.toUpperCase()}`);
       show('workspace-clear-key', fields.some((field) => field.kind === 'secret'));
       show('workspace-preset', character);
-      show('connection-actions', connection && !transfer && !editing);
+      show('connection-actions', connection && !transfer && !editing && (sub === 'llm' || sub === 'tts'));
+      show('workspace-free-preset', sub === 'llm');
       show('workspace-copy-key', sub === 'tts');
       show('workspace-browser-voice', sub === 'tts' && draft.ttsProvider === 'browser');
       show('memory-actions', tab === 'memory' && !editing);
@@ -232,7 +239,7 @@ export class WorkspaceSystem extends createSystem({}) {
         if (target === 'chat') submit(value);
         else if (target === 'note') { if (value.trim()) void agentState.addMemory(value, 'note').then(() => feedback('Note saved on this device.')).catch(reportError); }
         else if (target === 'search') { search = value.trim(); page = 0; refreshRecords(); }
-        else if (target === 'pin') { receivingPin = value.replace(/\D/gu, ''); feedback(receivingPin.length === 6 ? 'PIN ready. Press Apply settings.' : 'Enter all 6 PIN digits.', receivingPin.length !== 6); }
+        else if (target === 'pin') { receivingPin = value.replace(/\D/gu, '').slice(0, 6); feedback(receivingPin.length === 6 ? 'PIN ready. Press Apply settings.' : 'Enter all 6 PIN digits.', receivingPin.length !== 6); }
         else if (target.kind !== 'secret' || value !== '') changeDraft({ [target.key]: target.kind === 'number' ? Number(value) : value });
       }
       render();
@@ -335,7 +342,10 @@ export class WorkspaceSystem extends createSystem({}) {
     action('workspace-memory-clear', () => {
       if (!confirmingClear) { confirmingClear = true; feedback('This permanently clears ALL dialogue, facts and notes. Press Confirm clear again, or change tab to cancel.', true); render(); return; }
       confirmingClear = false; search = ''; page = 0;
-      void agentState.clearMemories().then(() => feedback('All dialogue, facts and notes cleared on this device.')).catch(reportError); render();
+      // The panel is not the only place that remembers: drop model history and stop speech too.
+      agentBrain.resetConversation();
+      hush();
+      void agentState.clearMemories().then(() => feedback('All dialogue, facts and notes cleared on this device, and the model dialogue reset.')).catch(reportError); render();
     });
     action('workspace-previous', () => { page = Math.max(0, page - 1); render(); });
     action('workspace-next', () => { page = Math.min(Math.max(0, visibleRecords().length - 1), page + 1); render(); });
@@ -372,6 +382,21 @@ export class WorkspaceSystem extends createSystem({}) {
       if (parsePairingFragment(location.hash)) history.replaceState(null, '', location.pathname + location.search);
       render();
     };
+    // Opening a pairing link in a tab where this app is already running is a
+    // same-document hash navigation: no reload happens, so the fragment must be
+    // picked up here or the panel would keep the previous link.
+    const receivePairingUrl = (): void => {
+      if (!parsePairingFragment(window.location.hash)) return;
+      receivingUrl = window.location.href;
+      receivingPin = ''; receivingBusy = false;
+      editing = null; input.value = ''; input.blur(); bridge.hidden = true;
+      tab = 'connections'; sub = 'transfer'; page = 0; confirmingClear = false;
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      feedback('Pairing link received. Enter the 6-digit PIN, then Apply settings.');
+      render();
+    };
+    window.addEventListener('hashchange', receivePairingUrl);
+    disposers.push(() => window.removeEventListener('hashchange', receivePairingUrl));
     action('workspace-receiver-pin', () => edit('pin'));
     action('workspace-receiver-apply', () => {
       if (receivingBusy) return;

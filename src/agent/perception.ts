@@ -173,6 +173,30 @@ export function getRoomContext(): string {
   return lines.join('\n');
 }
 
+/** One short line for the panel. The full geometry stays in getRoomContext() for the model. */
+export function getRoomSummary(): string {
+  const world = boundWorld;
+  if (!world) return 'Room geometry: not available.';
+  const session = world.xrSession;
+  if (!session) return 'Room geometry: unavailable on desktop. Enter MR to measure surfaces.';
+  const features = session.enabledFeatures;
+  const planesEnabled = features?.includes('plane-detection') ?? false;
+  const meshesEnabled = features?.includes('mesh-detection') ?? false;
+  if (features && !planesEnabled && !meshesEnabled) {
+    return 'Room geometry: plane/mesh detection not granted.';
+  }
+  const understanding = world.getSystem(SceneUnderstandingSystem);
+  if (!understanding) return 'Room geometry: detection not configured.';
+  const planes = understanding.queries.planeEntities.entities;
+  const meshes = understanding.queries.meshEntities.entities;
+  if (planes.size === 0 && meshes.size === 0) {
+    return performance.now() - sessionStartedAt < 3000
+      ? 'Room geometry: waiting for the initial scan.'
+      : 'Room geometry: no surfaces detected.';
+  }
+  return `Room geometry: ${planes.size} planes, ${meshes.size} meshes (metadata, not vision).`;
+}
+
 function stopStream(stream: MediaStream): void {
   for (const track of stream.getTracks()) track.stop();
 }

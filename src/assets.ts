@@ -11,21 +11,12 @@ import { createVRSpace } from './scene-assets/vr-space.scene-asset.js';
 
 const publicAssetUrl = (filePath: string): string =>
   `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
-const DEFAULT_STOCK_ASSET_BASE =
-  'https://cdn.jsdelivr.net/npm/@iwsdk/example-assets@0.4.2/assets';
-const configuredStockAssetBase =
-  import.meta.env.VITE_IWSDK_EXAMPLE_ASSET_BASE_URL?.trim();
-const stockAssetBase = (
-  configuredStockAssetBase || DEFAULT_STOCK_ASSET_BASE
-).replace(/\/+$/u, '');
-
-function stockAssetUrl(assetId: string, fileName: string): string {
-  return `${stockAssetBase}/${assetId}/${fileName}`;
-}
 
 export default defineAssets({
   'plant-sansevieria': {
-    url: stockAssetUrl('plant-sansevieria', 'plantSansevieria.gltf'),
+    // Bundled: a failed third-party CDN fetch aborts the whole level in IWSDK
+    // and leaves a blank page. MIT, see public/assets/plant-sansevieria/.
+    url: publicAssetUrl('assets/plant-sansevieria/plantSansevieria.gltf'),
     type: AssetType.GLTF,
     name: 'Plant Sansevieria',
     priority: 'lazy',
