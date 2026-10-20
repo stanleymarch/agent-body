@@ -6,6 +6,9 @@
  */
 
 import { agentState } from './state.js';
+import { avatarBody } from '../avatar-body.js';
+import { publishAvatarCue } from './cues.js';
+import type { AvatarCue } from './contracts.js';
 
 let status = 'Speech disabled';
 const listeners = new Set<(status: string) => void>();
@@ -30,10 +33,13 @@ export function onSpeechStatus(callback: (status: string) => void): () => void {
 /** Cancel fetching or playback. Intentional cancellation resolves speak(). */
 export function hush(): void {
   active?.cancel();
+  avatarBody.setTalking(false);
+  avatarBody.playCue(null);
+  publishAvatarCue(null);
 }
 
 /** Speak using the selected provider. Failures are both reported and rejected. */
-export function speak(text: string): Promise<void> {
+export function speak(text: string, cue: AvatarCue | null = null): Promise<void> {
   hush();
   if (!text.trim()) return Promise.resolve();
 
@@ -41,6 +47,14 @@ export function speak(text: string): Promise<void> {
     const controller = new AbortController();
     const cleanups: (() => void)[] = [];
     let finished = false;
+    let performanceStarted = false;
+    function startPerformance(talking: boolean): void {
+      if (performanceStarted || finished) return;
+      performanceStarted = true;
+      if (cue) avatarBody.playCue(cue);
+      publishAvatarCue(cue);
+      avatarBody.setTalking(talking);
+    }
     const operation = { cancel: () => finish('Speech canceled') };
     active = operation;
 
@@ -48,6 +62,7 @@ export function speak(text: string): Promise<void> {
       if (finished) return;
       finished = true;
       if (active === operation) active = null;
+      avatarBody.setTalking(false);
       controller.abort();
       for (const cleanup of cleanups.reverse()) {
         try {
@@ -66,6 +81,7 @@ export function speak(text: string): Promise<void> {
       if (finished) return;
       const settings = agentState.getSettings();
       if (settings.ttsProvider === 'off') {
+        startPerformance(false);
         finish('Speech disabled');
         return;
       }
@@ -104,7 +120,7 @@ export function speak(text: string): Promise<void> {
         utterance.voice = voice;
         utterance.lang = settings.speechLanguage;
         utterance.rate = 1.05;
-        utterance.onstart = () => { if (!finished) notify('Speech: speaking (browser)'); };
+        utterance.onstart = () => { if (!finished) { startPerformance(true); notify('Speech: speaking (browser)'); } };
         utterance.onend = () => finish('Speech complete');
         utterance.onerror = (event) => finish('', new Error(`Browser synthesis failed (${event.error})`));
         cleanups.push(() => {
@@ -130,7 +146,7 @@ export function speak(text: string): Promise<void> {
           'Content-Type': 'application/json',
           ...(settings.ttsApiKey ? { Authorization: `Bearer ${settings.ttsApiKey}` } : {}),
         },
-        body: JSON.stringify({ model: settings.ttsModel, voice: settings.ttsVoice, input: text }),
+        body: JSON.stringify({ model: settings.ttsModel, voice: settings.ttsVoice, input: text, response_format: 'mp3' }),
         signal: controller.signal,
       });
       if (finished) return;
@@ -151,7 +167,7 @@ export function speak(text: string): Promise<void> {
       });
       audio.onended = () => finish('Speech complete');
       audio.onerror = () => finish('', new Error('Generated speech audio could not be decoded or played'));
-      audio.onplaying = () => { if (!finished) notify('Speech: speaking (OpenAI-compatible)'); };
+      audio.onplaying = () => { if (!finished) { startPerformance(true); notify('Speech: speaking (OpenAI-compatible)'); } };
       notify('Speech: starting audio');
       if (!finished) await audio.play();
     }

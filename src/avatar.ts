@@ -40,6 +40,7 @@ import {
   VISEME_SWITCH_MS,
 } from './avatar-config.js';
 import { bindAvatarBody } from './avatar-body.js';
+import { AvatarAnimationLibrary, type AvatarAnimationPlayer } from './avatar-animation.js';
 import type {
   AgentSettings,
   AvatarBody,
@@ -78,9 +79,9 @@ function visemeForCode(code: number): AvatarExpressionName | null {
  * `GLTFLoader` addon comes from `three/examples/jsm`, which resolves to the
  * same super-three instance via the project override — no duplicate Three.
  *
- * Idle life is procedural (this VRM has no embedded clips): periodic blink via
- * the expression manager plus breathing/sway offsets on normalized humanoid
- * bones. `vrm.update(delta)` advances expressions and spring bones each frame.
+ * Ready-made CC0 VRMA body clips are retargeted to this same VRM. Uncovered
+ * wave/shake gestures and unavailable clips use explicit procedural fallback.
+ * Face, blink, visemes and gaze stay independent of body clip playback.
  *
  * Once loaded, the system binds itself to the `avatarBody` singleton
  * (`src/avatar-body.ts`) so agent code can drive expressions, talking,
@@ -110,6 +111,8 @@ export class AvatarSystem extends createSystem({}) {
   private idleMotion = true;
   private body: AvatarBody | null = null;
   private readonly loader = new GLTFLoader();
+  private readonly animationLibrary = new AvatarAnimationLibrary();
+  private animationPlayer: AvatarAnimationPlayer | null = null;
   private avatarEntity: Entity | null = null;
   private requestedSource: string | null = null;
   private activeSource = '';
@@ -134,9 +137,11 @@ export class AvatarSystem extends createSystem({}) {
   private cueTotal = 0;
   private cueGesture: CueGesture = 'none';
   private cueGestureDur = 0;
+  private cueUsesClip = false;
 
   init(): void {
     this.loader.register((parser) => new VRMLoaderPlugin(parser));
+    void this.animationLibrary.load();
     const system = this;
     this.body = {
       get available() {
@@ -179,7 +184,12 @@ export class AvatarSystem extends createSystem({}) {
         system.cue = cue;
         system.cueElapsed = 0;
         system.cueGesture = cue.gesture;
-        system.cueGestureDur = GESTURE_DURATIONS_SEC[cue.gesture];
+        const clipDuration = system.animationPlayer?.playCue(cue) ?? 0;
+        system.cueUsesClip = clipDuration > 0;
+        system.cueGestureDur = clipDuration || GESTURE_DURATIONS_SEC[cue.gesture];
+        if (import.meta.env.DEV && cue.gesture !== 'none' && clipDuration === 0) {
+          console.debug('[avatar] procedural gesture', cue.gesture);
+        }
         const emotionWindow =
           CUE_EMOTION_ATTACK_SEC + CUE_EMOTION_HOLD_SEC + CUE_EMOTION_DECAY_SEC;
         system.cueTotal = Math.max(emotionWindow, system.cueGestureDur);
@@ -212,6 +222,9 @@ export class AvatarSystem extends createSystem({}) {
     this.cleanupFuncs.push(() => {
       this.disposed = true;
       this.loadRevision++;
+      this.clearCue();
+      this.animationPlayer?.dispose();
+      this.animationPlayer = null;
       const vrm = this.vrm;
       this.vrm = null;
       this.avatarEntity?.dispose({ disposeResources: false });
@@ -241,9 +254,8 @@ export class AvatarSystem extends createSystem({}) {
   }
 
   private restoreIdlePose(): void {
-    if (this.idleMotion) return;
-    if (this.chest != null) this.chest.rotation.x = this.chestBaseX;
-    if (this.hips != null) this.hips.rotation.z = this.hipsBaseZ;
+    if (this.idleMotion || this.cueGestureDur > 0) return;
+    this.animationPlayer?.stop();
   }
 
   private applyGaze(): void {
@@ -261,8 +273,12 @@ export class AvatarSystem extends createSystem({}) {
     if (source === this.activeSource && this.vrm != null) return;
     let candidate: VRM | null = null;
     let candidateEntity: Entity | null = null;
+    let candidatePlayer: AvatarAnimationPlayer | null = null;
     try {
-      const gltf = await this.loader.loadAsync(source);
+      const [gltf] = await Promise.all([
+        this.loader.loadAsync(source),
+        this.animationLibrary.load(),
+      ]);
       candidate = gltf.userData.vrm as VRM | undefined ?? null;
       if (candidate == null) {
         VRMUtils.deepDispose(gltf.scene);
@@ -283,27 +299,7 @@ export class AvatarSystem extends createSystem({}) {
         const direction = Math.sign(elbow.position.x);
         arm.rotation.z = -direction * REST_ARM_DROP;
         elbow.rotation.y = -direction * REST_ELBOW_BEND;
-        if (side === 'right') {
-          this.armR = arm;
-          this.elbowR = elbow;
-          this.dirR = direction;
-          this.armRRest.x = arm.rotation.x;
-          this.armRRest.y = arm.rotation.y;
-          this.armRRest.z = arm.rotation.z;
-          this.elbowRRest.x = elbow.rotation.x;
-          this.elbowRRest.y = elbow.rotation.y;
-          this.elbowRRest.z = elbow.rotation.z;
-        }
       }
-      this.head = humanoid.getNormalizedBoneNode('head');
-      this.headRest.x = this.head?.rotation.x ?? 0;
-      this.headRest.y = this.head?.rotation.y ?? 0;
-      this.headRest.z = this.head?.rotation.z ?? 0;
-      this.spine = humanoid.getNormalizedBoneNode('spine');
-      this.spineRest.x = this.spine?.rotation.x ?? 0;
-      this.spineRest.y = this.spine?.rotation.y ?? 0;
-      this.spineRest.z = this.spine?.rotation.z ?? 0;
-      this.cue = null;
       const avatar = candidate.scene;
       avatar.name = 'user-vrm';
       avatar.position.set(...AVATAR_POSITION);
@@ -317,6 +313,13 @@ export class AvatarSystem extends createSystem({}) {
       }
       candidate.update(0);
       candidateEntity = this.world.createTransformEntity(avatar);
+      candidatePlayer = this.animationLibrary.bind(candidate);
+      // Commit the replacement only after parsing and entity creation succeed.
+      // Release old bindings before capturing any candidate bone references.
+      this.clearCue();
+      this.animationPlayer?.dispose();
+      this.captureGestureBones(candidate);
+      this.animationPlayer = candidatePlayer;
       const previous = this.vrm;
       const previousEntity = this.avatarEntity;
       this.vrm = candidate;
@@ -340,6 +343,7 @@ export class AvatarSystem extends createSystem({}) {
       // Never remove the visible avatar on a failed download/VRM preparation.
       if (candidate != null && candidate !== this.vrm) {
         candidateEntity?.dispose({ disposeResources: false });
+        candidatePlayer?.dispose();
         candidate.scene.removeFromParent();
         VRMUtils.deepDispose(candidate.scene);
       }
@@ -348,6 +352,22 @@ export class AvatarSystem extends createSystem({}) {
       const message = error instanceof Error ? error.message : String(error);
       console.error('[avatar] failed to load', source, error);
       setCharacterStatus({ ready: this.vrm != null, source, error: message });
+    }
+  }
+
+  private captureGestureBones(vrm: VRM): void {
+    const humanoid = vrm.humanoid;
+    this.head = humanoid.getNormalizedBoneNode('head');
+    this.spine = humanoid.getNormalizedBoneNode('spine');
+    this.armR = humanoid.getNormalizedBoneNode('rightUpperArm');
+    this.elbowR = humanoid.getNormalizedBoneNode('rightLowerArm');
+    this.dirR = Math.sign(this.elbowR?.position.x ?? -1);
+    const bones = [this.head, this.spine, this.armR, this.elbowR];
+    const rests = [this.headRest, this.spineRest, this.armRRest, this.elbowRRest];
+    for (let i = 0; i < bones.length; i++) {
+      rests[i].x = bones[i]?.rotation.x ?? 0;
+      rests[i].y = bones[i]?.rotation.y ?? 0;
+      rests[i].z = bones[i]?.rotation.z ?? 0;
     }
   }
 
@@ -434,23 +454,25 @@ export class AvatarSystem extends createSystem({}) {
       }
     }
 
-    // Breathing and sway as offsets from the captured rest pose. Frozen at the
-    // rest pose when idle motion is disabled (blink and talking stay live).
-    if (this.idleMotion) {
+    const proceduralGesture =
+      this.cue != null && !this.cueUsesClip &&
+      this.cueGestureDur > 0 && this.cueElapsed + delta < this.cueGestureDur;
+    // Reset procedural offsets before writing the next frame: a bow cannot
+    // accumulate chest rotation even when idle breathing is disabled.
+    if (proceduralGesture) this.animationPlayer?.restoreRest();
+    this.animationPlayer?.update(delta, this.idleMotion, this.talking, proceduralGesture);
+    // File playback exclusively owns body bones. Procedural breathing is only
+    // a fallback, never a second layer overwriting a real idle/speaking clip.
+    if (this.idleMotion && !this.animationPlayer?.playing) {
       if (this.chest != null) {
-        this.chest.rotation.x =
-          this.chestBaseX +
-          BREATH_AMPLITUDE * Math.sin(this.elapsed * BREATH_RATE);
+        this.chest.rotation.x = this.chestBaseX + BREATH_AMPLITUDE * Math.sin(this.elapsed * BREATH_RATE);
       }
       if (this.hips != null) {
-        this.hips.rotation.z =
-          this.hipsBaseZ + SWAY_AMPLITUDE * Math.sin(this.elapsed * SWAY_RATE);
+        this.hips.rotation.z = this.hipsBaseZ + SWAY_AMPLITUDE * Math.sin(this.elapsed * SWAY_RATE);
       }
     }
 
-    // Reply-driven cue: emotion envelope on VRM expressions plus a
-    // procedural gesture layered on top of the idle pose above. Runs even
-    // when idle motion is disabled, like blink and talking.
+    // Emotion timing is independent of body gesture timing.
     if (this.cue != null) {
       this.cueElapsed += delta;
       if (this.cue.emotion !== 'neutral') {
@@ -465,8 +487,14 @@ export class AvatarSystem extends createSystem({}) {
             ),
         );
       }
-      if (this.cueGestureDur > 0 && this.cueElapsed <= this.cueGestureDur) {
-        this.applyGesture(this.cueGesture, this.cueElapsed / this.cueGestureDur);
+      if (this.cueGestureDur > 0) {
+        if (this.cueElapsed >= this.cueGestureDur) {
+          this.animationPlayer?.stop();
+          this.cueGestureDur = 0;
+          this.cueUsesClip = false;
+        } else if (!this.cueUsesClip) {
+          this.applyGesture(this.cueGesture, this.cueElapsed / this.cueGestureDur);
+        }
       }
       if (this.cueElapsed >= this.cueTotal) {
         this.clearCue();
@@ -545,9 +573,11 @@ export class AvatarSystem extends createSystem({}) {
         if (head != null) {
           head.rotation.x = this.headRest.x + GESTURE_BOW_HEAD * e;
         }
-        // Chest bows additively on top of the breathing pose above.
+        // Absolute baseline, including idle-off mode: never add to last frame.
         if (this.chest != null) {
-          this.chest.rotation.x += GESTURE_BOW_SPINE * 0.3 * e;
+          this.chest.rotation.x = this.chestBaseX +
+            (this.idleMotion ? BREATH_AMPLITUDE * Math.sin(this.elapsed * BREATH_RATE) : 0) +
+            GESTURE_BOW_SPINE * 0.3 * e;
         }
         break;
       case 'none':
@@ -559,28 +589,11 @@ export class AvatarSystem extends createSystem({}) {
   private clearCue(): void {
     const cue = this.cue;
     this.cue = null;
+    this.cueGestureDur = 0;
+    this.cueUsesClip = false;
+    this.animationPlayer?.stop();
     if (cue != null && cue.emotion !== 'neutral') {
       this.vrm?.expressionManager?.setValue(cue.emotion, 0);
-    }
-    const head = this.head;
-    if (head != null) {
-      head.rotation.set(this.headRest.x, this.headRest.y, this.headRest.z);
-    }
-    const spine = this.spine;
-    if (spine != null) {
-      spine.rotation.set(this.spineRest.x, this.spineRest.y, this.spineRest.z);
-    }
-    const armR = this.armR;
-    if (armR != null) {
-      armR.rotation.set(this.armRRest.x, this.armRRest.y, this.armRRest.z);
-    }
-    const elbowR = this.elbowR;
-    if (elbowR != null) {
-      elbowR.rotation.set(
-        this.elbowRRest.x,
-        this.elbowRRest.y,
-        this.elbowRRest.z,
-      );
     }
   }
 }

@@ -67,7 +67,7 @@ export const CUE_EMOTION_HOLD_SEC = 2.4;
 /** Seconds a cued emotion takes to fade back to zero. */
 export const CUE_EMOTION_DECAY_SEC = 1.6;
 
-/** Total gesture durations; the cue lasts at least the emotion window. */
+/** Procedural fallback durations only; loaded VRMA cues use file duration. */
 export const GESTURE_DURATIONS_SEC: Record<CueGesture, number> = {
   none: 0,
   wave: 2.6,

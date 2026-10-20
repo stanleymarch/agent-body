@@ -15,134 +15,124 @@ npm run dev
 The CLI manages Vite and its browser. Use the Runtime/Editor toggle in that window.
 Do not start a separate Vite process. Production builds use `npm run build`.
 
-## Workspace
+## Workspace: one Meta Horizon surface
 
-Desktop has one sidebar; an immersive session hides it and shows one spatial
-panel. Both presentations use `src/workspace.ts`, the same settings draft, chat,
-memories, speech adapters and avatar. The old welcome panel, robot, HUD copies,
-standalone settings card and bottom chat overlay have been removed.
+Desktop and immersive modes share one Horizon-kit UIKitML panel
+(`public/ui/agent.uikitml`). In the browser it is attached with a `ScreenSpace`
+component; entering XR returns it to its authored world transform. The old
+hand-styled DOM sidebar, settings card and chat overlay are gone. The only DOM
+left is a hidden native text/password input that doubles as the Quest
+system-keyboard bridge while editing a field.
 
-- **Dialogue**: persisted conversation, message input, microphone and Send.
-  Enter sends; Shift+Enter adds a line. With no LLM endpoint, the header explicitly
-  says Offline demo. This is not a live AI service.
-- **Character**: bundled VRM source, name, system prompt, model URL, scale, idle
-  motion and gaze. **Use bundled VRM** resets the model source and scale, not the
-  personality. A custom URL must allow browser cross-origin loading. A failed
-  replacement leaves the previous valid avatar visible and can be retried.
-- **Connections / LLM**: OpenAI-compatible base URL, model ID and dedicated key.
-- **Connections / STT**: Off, Browser speech recognition, or an OpenAI-compatible
-  transcription endpoint. The API path records microphone audio with
-  MediaRecorder and posts multipart `file`, `model`, `language` to
-  `<base>/audio/transcriptions`.
-- **Connections / TTS**: Off, Browser voices, or an OpenAI-compatible speech
-  endpoint. The API path posts `model`, `voice`, `input` to `<base>/audio/speech`
-  and plays the returned audio. **Test voice** saves a valid draft first.
-- **Memory**: add, search and clear local notes; conversation also persists here.
+Tabs: **Dialogue** (message, microphone, explicit Look/camera), **Character**
+(bundled preset, custom VRM URL, prompt, scale, idle, gaze), **Connections**
+(independent LLM/STT/TTS + encrypted QR transfer), **Memory** (notes, facts,
+search, confirmed clear). Enter MR / Enter VR / Return to browser are the same
+panel. Cyrillic text renders through bundled Noto Sans (SIL OFL 1.1,
+`public/fonts/OFL.txt`; source: `notofonts/noto-fonts`).
 
-STT and TTS have separate endpoints, models and keys; neither silently borrows
-the LLM key. Browser speech depends on installed voices and recognition support.
-Unavailable features and provider errors are reported, not silently ignored.
-Microphone input requires HTTPS, user permission and browser recording support.
-Stopping a recording releases its tracks; cancelling also aborts transcription
-and ignores late results. Switching a speech provider stops its active session.
-
-Settings and memories are local to this browser's IndexedDB. Save applies only
-edited fields, preserving unrelated settings updates. Secret inputs never display
-stored keys: leave blank to retain, enter a replacement, or explicitly Clear.
-Immersive Connections also offers **Clear key** followed by **Save**.
 `window.__agentBody` exists only in development builds.
+
+## Avatar performance
+
+The avatar performs alongside replies through an **optional typed tool**, not
+inline text tags. The live system prompt offers `avatar_perform(emotion,
+gesture)` with fixed vocabularies; a zod-validated schema rejects unknown
+values. Without the call the avatar stays neutral, and the reply text is
+ordinary prose — nothing is parsed out of it, so a small model cannot leak
+markup into speech or memory. This reduces formatting failures; it is not a
+guard against factual errors in the model's answer.
+
+- Emotions `neutral happy angry sad relaxed surprised` drive VRM expression
+  presets with an attack/hold/decay envelope.
+- Gestures are backed by **real CC0 VRMA clips** where honestly covered
+  (`public/animations/ATTRIBUTION.txt` pins sources, licenses and SHA-256):
+  idle, speaking, listening-nod, thinking, kneeling apology (bow),
+  encouragement (happy), startled (surprised). Wave and shake remain procedural
+  — labelled as such, never described as clips.
+- Speaking animation follows **actual audio playback**, not network token
+  generation; mouth movement is approximate viseme timing.
+- Clips restore the exact captured normalized-skeleton rest pose on completion,
+  cancellation, and avatar replacement. A missing or failed clip falls back to
+  procedural motion and logs it in development.
+
+## Room understanding and camera
+
+- `getRoomContext()` feeds the model **measured WebXR geometry only** (detected
+  planes/meshes with dimensions and origins, browser semantic labels, capped at
+  12 surfaces), explicitly labelled as metadata, not vision. Unbounded meshes
+  report "dimensions not provided". The prompt forbids inferring objects,
+  colours or people from geometry, and states plainly when no photo is attached.
+- A photo is captured **only on an explicit command** ("look at this",
+  "посмотри, что это", "сделай фото", "what do you see in the camera" — full
+  message, anchored). One ephemeral JPEG (max 1024px) is attached to that single
+  request; it is never stored in history or memory, and camera tracks are
+  stopped before the request is sent. Mentioning a camera is not consent.
+- Quest passthrough compositing does not expose camera pixels to WebXR. Capture
+  uses `getUserMedia` when the browser exposes a camera; a feed is labelled
+  `quest-camera` only on positive camera identity, and an ambiguous Quest feed
+  is rejected with an actionable message instead of masquerading as the room.
+  Permission denial, missing cameras, and timeouts all report honestly.
+- Room geometry requires MR with plane/mesh detection granted (headset space
+  setup). The emulator reports simulated geometry, not a physical room.
+
+## Connections
+
+Independent LLM, STT and TTS providers, endpoints, models and keys. Secrets are
+never rendered back; blank retains, Clear removes, and the LLM key is copied to
+TTS only by an explicit button. **OpenRouter free preset** fills
+`google/gemma-4-31b-it:free` (text+image input, no audio input) and
+`fish-audio/s2.1-pro-free:free` speech (`mp3`), but no credentials: enter your
+own key. Free endpoints are shared-pool rate-limited — 429s happen and the app
+reports them instead of falling back to a paid model or a fake reply.
+Browser speech recognition/synthesis depend on runtime support. STT records
+only while active; stopping releases tracks and aborts transcription.
 
 ## Desktop, MR and VR
 
-XR means an immersive browser session. IWER is IWSDK's browser-based XR emulator:
-https://iwsdk.dev/guides/02-testing-experience.html#iwer-controls
+XR means an immersive browser session. IWER is IWSDK's browser-based XR
+emulator: https://iwsdk.dev/guides/02-testing-experience.html#iwer-controls
 
-- Desktop renders the avatar and virtual room without an XR session. WASD/arrows
-  move, Space jumps, right mouse button looks around, and pointer input is enabled.
-  Mouse look preserves the configured desktop camera pose instead of resetting it.
-- **Enter MR** requests `immersive-ar` from the current world. The virtual room
-  hides; hands/controllers, grabbing, anchors, plane/mesh detection and environment
-  hit testing use the configured IWSDK features.
-- **Enter VR** requests `immersive-vr` from the same world and shows the virtual
-  room, without MR-only session features. **Return to browser** exits the session.
-  Settings, avatar and conversation do not reset.
-- Entry buttons appear only for supported modes. In the spatial panel, select a
-  field to edit it through an in-page input; provider/toggle fields cycle directly.
-  On supporting Quest Browser versions this requests the system keyboard. IWER
-  does not prove the physical headset's keyboard or microphone behavior.
+- Desktop: WASD/arrows move, Space jumps, right mouse looks; the configured
+  camera pose is preserved.
+- **Enter MR** starts `immersive-ar` (passthrough, hands/controllers, grabbing,
+  anchors, plane/mesh detection, hit-test). The virtual room hides.
+- **Enter VR** starts `immersive-vr` and shows the procedural virtual room.
+  State, avatar and conversation persist across mode switches.
 
 ## Character and rendering
 
-`public/vrm/user.vrm` is VRoid AvatarSample_D (VRM 1.0), presented as Ava. It has
-no embedded animation clips; blink, breathing, sway, mouth cues and the gesture
-vocabulary below are procedural, not a motion-capture animation library.
-`AvatarSystem` uses GLTFLoader with VRMLoaderPlugin because IWSDK's manifest
-loader does not expose VRM plugin setup. The avatar remains one entity in the
-shared world.
+`public/vrm/user.vrm` is VRoid AvatarSample_D (VRM 1.0), presented as Ava,
+loaded with GLTFLoader + VRMLoaderPlugin. Blink, breath, sway and visemes are
+procedural; body motion comes from the CC0 VRMA library above. MToon needs real
+ambient/hemisphere/directional lights (supplied by the scene), not just an IBL
+map.
 
-MToon needs actual ambient/hemisphere/directional lights; an IBL environment map
-alone does not light this shader. The scene now supplies those lights without
-replacing the VRM's materials. The desktop camera and headset pose remain separate.
-
-**Asset rights:** the bundled VRM's metadata credits VRoid and declares restricted
-redistribution/modification and personal non-profit use. Its presence is not proof
-of redistribution permission. Verify the original rights before further public
-redistribution or commercial use; application source licensing does not license
-this avatar. A self-owned or appropriately licensed VRM can be selected in Character.
-
-## Performance cues (emotion + gesture with every reply)
-
-Every reply carries one performance tag at the start, e.g. `[[happy|wave]] Hi!`.
-This is the whole transmission system: the tag travels inside the reply text,
-`CueStreamFilter` (src/agent/cues.ts) strips it — even when it is split across
-stream chunks — and the clean text goes to the chat, speech synthesis, visemes
-and memory, while the parsed cue immediately drives the body:
-
-- Emotions `neutral happy angry sad relaxed surprised` — VRM expression presets
-  with a smooth attack/hold/decay envelope (peak weight 0.65, ~4.4 s window).
-- Gestures `none wave nod shake think bow` — procedural normalized-bone poses
-  layered on top of breathing/sway, then restored exactly to the rest pose.
-- The live system prompt instructs the model to emit exactly one tag; if it
-  omits or misspells it, values fall back to `neutral|none` and nothing leaks
-  into displayed text. An endpoint failure performs `sad|shake`.
-- Offline brain picks the cue from keywords (greetings → `happy|wave`,
-  questions → `surprised|nod`, goodbyes → `relaxed|bow`, …), so the demo
-  performs without any endpoint. The workspace header and spatial status show
-  the current cue (e.g. `· happy · wave`) until the next message.
-- Ambient idle micro-expressions pause while a cue performs, so the two never
-  fight over expression weights.
-
-Note: the spatial UIKitML panel's bundled font lacks Cyrillic glyphs; Cyrillic
-chat text renders in the desktop DOM panel but may show placeholder boxes in
-the immersive panel. Speech and cue parsing handle Cyrillic normally.
+**Asset rights:** the bundled VRM's metadata declares restricted
+redistribution/modification and personal non-profit use. Its presence is not
+proof of redistribution permission; verify before further public redistribution
+or commercial use. VRMA clips are CC0 (see `public/animations/`); Noto fonts are
+SIL OFL 1.1.
 
 ## Settings transfer by QR
 
-**Connections / Transfer** creates a link/QR for the complete saved character,
-LLM, STT and TTS configuration. Save changes first. Open the link on the receiving
-browser, enter its separate six-digit PIN, then save the decoded settings locally.
-A headset's native QR scanner may open the link; the WebXR app does not itself
-read passthrough camera pixels. Copy/open the link if scanning is unavailable.
-
-The v2 payload is AES-GCM encrypted with a PBKDF2-SHA256 PIN-derived key
-(300,000 iterations), expires after ten minutes and travels in the URL fragment.
-The receiver clears that fragment immediately. This is **not** a server-enforced
-one-time link or revocable invitation: copied ciphertext can be replayed during
-its lifetime, and a six-digit PIN permits offline guessing. Treat QR and PIN as
-secrets, do not publish them together, and rotate keys if exposed.
-
-This static application sends user-configured keys directly to their endpoints.
-Use user-owned/restricted keys and CORS-compatible endpoints. A public product
-that owns provider credentials needs a gateway; GitHub Pages cannot hide a key
-embedded in frontend code. No provider credentials are bundled.
+**Connections / Transfer** encrypts the complete saved configuration
+(AES-GCM, PBKDF2-SHA256 with 300k iterations from a separate six-digit PIN,
+10-minute TTL, URL fragment). The receiver (same UIKitML panel) asks for the
+PIN; the fragment is captured and cleared before world bootstrap. Not a
+server-enforced one-time link: copied ciphertext can be replayed within its
+lifetime and a six-digit PIN permits offline guessing. Treat QR + PIN as
+secrets. The app sends user-configured keys directly to their endpoints; use
+restricted keys and CORS-compatible endpoints. No credentials are bundled.
 
 ## Deployment and verification
 
-`.github/workflows/deploy-pages.yml` runs typecheck/build and deploys `main` to
-GitHub Pages. Relative build asset URLs support the `/agent-body/` project path.
-
-Before runtime verification run `npm run --if-present typecheck`. Inspect desktop
-with the managed runtime screenshot, not an editor-only render. Inspect an active
-MR/VR session before making immersive interaction claims. Emulated results do not
-establish headset performance, passthrough fidelity, native keyboard support or
-external-provider audio quality.
+`.github/workflows/deploy-pages.yml` typechecks, builds and deploys `main` to
+GitHub Pages. Before runtime verification run the typecheck; inspect desktop
+with the managed runtime screenshot and an active MR/VR session before
+immersive claims. Emulated runs do not establish headset performance, real
+passthrough, physical camera availability or native keyboard behavior. Verified
+in this revision on the emulator: real VRMA playback/restoration, Fish free
+speech end-to-end, request composition for Gemma free (blocked upstream by
+shared-pool 429 at test time), explicit-photo privacy path, native Horizon
+controls with Cyrillic.

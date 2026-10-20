@@ -107,7 +107,7 @@ export type CueEmotion =
   | 'relaxed'
   | 'surprised';
 
-/** Reply-driven gesture vocabulary (procedural, no animation clips). */
+/** Reply gesture vocabulary: licensed VRMA clips where supplied, procedural otherwise. */
 export type CueGesture = 'none' | 'wave' | 'nod' | 'shake' | 'think' | 'bow';
 
 /** One avatar performance delivered alongside a model reply. */
@@ -123,8 +123,8 @@ export interface AvatarBody {
   /** Weight 0..1 for a VRM 1.0 expression; ignored while unavailable. */
   setExpression(name: AvatarExpressionName, weight: number): void;
   /**
-   * Talking state: while active the mouth (aa/ih/ou/ee) oscillates in the
-   * avatar update loop. M0 drives it manually; M1 wires it to LLM output.
+   * Audio playback owns this state. Mouth movement is approximate, not
+   * provider-aligned phoneme timing.
    */
   setTalking(active: boolean): void;
   /**

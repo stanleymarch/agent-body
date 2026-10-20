@@ -62,7 +62,7 @@
       "id": "agent-panel",
       "name": "Immersive Workspace",
       "content": { "type": "asset", "asset": "agent-panel" },
-      "transform": { "position": [0.75, 1.45, -1.8], "scale": 0.95 },
+      "transform": { "position": [0.75, 1.2, -1.8], "scale": 0.72 },
       "components": { "RayInteractable": {}, "Visibility": { "isVisible": false } }
     },
     {

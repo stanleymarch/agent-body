@@ -1,62 +1,13 @@
-:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #edf2ff; background: #141d2c; color-scheme: dark; }
+:root { font-family: ui-sans-serif, system-ui, sans-serif; background: #141d2c; color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin: 0; }
 #scene-container { position: fixed; inset: 0; }
-#agent-workspace { position: fixed; inset: 20px 20px 20px auto; width: 390px; max-width: calc(100vw - 32px); display: flex; flex-direction: column; background: #111b2bed; border: 1px solid #43516a; border-radius: 22px; backdrop-filter: blur(18px); box-shadow: 0 20px 70px #050b1655; z-index: 10; overflow: hidden; }
-#agent-workspace[hidden], [hidden] { display: none !important; }
-.workspace-header { padding: 22px 22px 16px; display: flex; align-items: center; gap: 12px; }
-.avatar-monogram { height: 42px; width: 42px; border-radius: 14px; display: grid; place-items: center; background: #b9c8ff; color: #172751; font-weight: 800; font-size: 22px; flex-shrink: 0; }
-.workspace-header h1 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -.4px; }
-#connection-status { margin-top: 3px; color: #9fadc4; font-size: 12px; }
-.workspace-nav { display: flex; padding: 0 14px 14px; gap: 4px; border-bottom: 1px solid #334159; }
-button, input, textarea, select { font: inherit; }
-button { cursor: pointer; }
-.workspace-nav button { flex: 1; padding: 10px 5px; background: transparent; color: #aab7cd; border: 0; border-radius: 10px; font-size: 12px; }
-.workspace-nav button[aria-selected="true"], .connection-nav button[aria-selected="true"] { color: #f8fbff; background: #344365; }
-.workspace-content { flex: 1; min-height: 0; overflow-y: auto; padding: 20px; scrollbar-width: thin; }
-.workspace-content h2 { font-size: 17px; margin: 0 0 8px; }
-.workspace-content p { color: #aebbd1; font-size: 13px; line-height: 1.6; }
-.workspace-content p strong { color: #d8e3f7; }
-.workspace-content label { display: block; color: #d3ddee; font-size: 13px; margin: 18px 0 5px; }
-.workspace-content input:not([type="checkbox"]), .workspace-content textarea, .workspace-content select { width: 100%; padding: 11px 12px; border: 1px solid #4a5a76; border-radius: 10px; color: #f1f5ff; background: #0b1423; outline: none; font-size: 13px; }
-.workspace-content input:focus, .workspace-content textarea:focus, .workspace-content select:focus { border-color: #a5b9ff; }
-.workspace-content textarea { min-height: 102px; resize: vertical; line-height: 1.5; }
-.field-help { display: block; font-size: 11px; color: #94a4bf; line-height: 1.5; margin-top: 6px; }
-.field-secret { display: flex; align-items: center; gap: 8px; }
-.field-secret button { flex: 0; background: transparent; border: 1px solid #4a5a76; color: #b7c4df; border-radius: 8px; padding: 10px; }
-.toggle-field { display: flex !important; align-items: center; justify-content: space-between; padding: 12px 0; }
-.toggle-field input { accent-color: #b0c2ff; width: 18px; height: 18px; }
-.connection-nav { display: flex; gap: 6px; margin: 16px 0 20px; }
-.connection-nav button { flex: 1; padding: 8px; border: 1px solid #3c4b67; border-radius: 9px; color: #adbbd1; background: transparent; font-size: 12px; }
-.primary-action { border: 0; border-radius: 11px; background: #b9c8ff; color: #182644; padding: 12px 16px; font-weight: 700; }
-.secondary-action { border: 1px solid #53647f; border-radius: 11px; background: transparent; color: #d6e1f5; padding: 11px 14px; }
-.form-actions { display: flex; gap: 10px; margin: 22px 0 8px; flex-wrap: wrap; }
-#workspace-feedback { min-height: 18px; color: #c0cfff; font-size: 12px; padding: 0 20px 10px; overflow-wrap: anywhere; }
-#workspace-feedback[data-error="true"] { color: #ffb8b8; }
-.workspace-footer { border-top: 1px solid #334159; padding: 12px 16px; display: flex; gap: 8px; }
-.workspace-footer button { flex: 1; min-height: 40px; font-size: 12px; }
-.chat-empty { margin-top: 36px; padding: 18px 4px; }
-.chat-empty .eyebrow { color: #bacaff; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; }
-.chat-empty h2 { font-size: 25px; line-height: 1.3; font-weight: 500; margin-top: 12px; }
-.message { padding: 13px 15px; margin-bottom: 12px; border-radius: 14px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.55; background: #1d2b40; }
-.message.user { background: #344365; margin-left: 22px; }
-.message .message-role { display: block; color: #a7b8d8; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-#chat-composer { border-top: 1px solid #334159; padding: 14px 16px; }
-#chat-composer textarea { width: 100%; background: #0b1423; color: #f1f5ff; border: 1px solid #465977; border-radius: 12px; padding: 12px; resize: none; min-height: 70px; font-size: 13px; }
-.composer-actions { display: flex; gap: 8px; margin-top: 8px; }
-.composer-actions button { min-height: 38px; font-size: 12px; }
-#chat-send { flex: 1; }
-button:disabled { opacity: .45; cursor: not-allowed; }
-.character-preset { padding: 16px; border: 1px solid #54668b; background: #263653; border-radius: 13px; margin-top: 18px; }
-.character-preset strong { display: block; font-size: 15px; }
-.character-preset small { display: block; color: #aebdd7; line-height: 1.6; margin-top: 6px; }
-.character-status { font-size: 12px; color: #b8c8e9; padding-top: 12px; }
-.memory-record { border-bottom: 1px solid #334159; padding: 14px 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-#pairing-share { padding-top: 18px; text-align: center; }
-#pairing-share img { display: block; max-width: 100%; width: 300px; height: auto; margin: auto; border: 14px solid white; background: white; image-rendering: pixelated; border-radius: 10px; }
-#pairing-pin { font: 700 24px/1.4 ui-monospace, monospace; letter-spacing: 4px; margin-top: 12px; }
-.stage-label { position: fixed; left: 28px; top: 25px; color: #c3cfdf; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; pointer-events: none; }
-.stage-help { position: fixed; left: 28px; bottom: 26px; color: #9baec6; font-size: 11px; pointer-events: none; }
-#xr-keyboard { position: fixed; left: 1px; bottom: 1px; width: 1px; height: 1px; border: 0; padding: 0; opacity: .01; z-index: -1; }
-@media (max-width: 900px) { #agent-workspace { width: 330px; inset: 12px 12px 12px auto; } .workspace-header { padding: 16px; } .workspace-content { padding: 16px; } .stage-label, .stage-help { left: 16px; max-width: calc(100vw - 370px); } }
-@media (max-width: 580px) { #agent-workspace { inset: auto 8px 8px 8px; width: auto; max-width: none; height: 57dvh; border-radius: 18px; } .workspace-header { padding: 10px 14px; } .avatar-monogram { width: 30px; height: 30px; font-size: 17px; border-radius: 9px; } .workspace-header h1 { font-size: 15px; } .workspace-nav { padding-bottom: 8px; } .stage-label { max-width: none; } .stage-help { display: none; } }
+[hidden] { display: none !important; }
+/* The only DOM workspace surface is a temporary native text/IME bridge.
+   All actions, navigation, state, settings and feedback are Horizon UIKitML. */
+#workspace-keyboard-bridge { position: fixed; left: 12px; bottom: 12px; width: min(420px, calc(100vw - 24px)); padding: 12px; z-index: 20; background: #fff; color: #202124; border: 1px solid #dadce0; border-radius: 12px; }
+#workspace-keyboard-label { display: block; margin-bottom: 6px; font: 500 14px/1.4 system-ui, sans-serif; }
+#workspace-keyboard-bridge textarea, #workspace-keyboard-bridge input { display: block; width: 100%; padding: 10px; resize: vertical; border: 1px solid #8a9099; border-radius: 6px; background: #fff; color: #202124; font: 16px/1.4 system-ui, sans-serif; }
+/* Focusable, not display:none, so Quest Browser can invoke its native keyboard. */
+.workspace-immersive #workspace-keyboard-bridge { left: 1px; bottom: 1px; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0.01; overflow: hidden; }
+.workspace-immersive #workspace-keyboard-bridge textarea, .workspace-immersive #workspace-keyboard-bridge input { width: 1px; height: 1px; min-height: 0; padding: 0; border: 0; }

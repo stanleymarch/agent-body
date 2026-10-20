@@ -10,15 +10,13 @@ import projectOptions from 'virtual:iwsdk-project';
 import { BrowserMouseLookSystem } from './mouselook.js';
 import { AvatarSystem } from './avatar.js';
 import { AmbientSystem } from './ambient.js';
-import { mountPairingReceiver } from './pairing-receiver.js';
 import { consumePairingUrl, createPairingOffer } from './pairing.js';
 import { agentState } from './agent/state.js';
 import { agentBrain } from './agent/brain.js';
 import { avatarBody } from './avatar-body.js';
 import { WorkspaceSystem } from './workspace.js';
+import { bindPerception } from './agent/perception.js';
 
-// Finish a scanned settings-pairing link before any XR session starts.
-mountPairingReceiver();
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
   projectOptions,
@@ -26,6 +24,7 @@ World.create(
   world.registerSystem(BrowserMouseLookSystem);
   world.registerSystem(AvatarSystem);
   world.registerSystem(AmbientSystem);
+  world.addCleanup(bindPerception(world));
   world.registerSystem(WorkspaceSystem);
 
   if (import.meta.env.DEV) {

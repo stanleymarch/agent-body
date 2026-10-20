@@ -21,21 +21,32 @@ export const agentSettingsSchema = z.object({
   sttModel: z.string(),
   sttApiKey: z.string(),
 });
+
+/** Public model selection only. Credentials are never included or copied. */
+export const OPENROUTER_FREE_PRESET = {
+  modelEndpoint: 'https://openrouter.ai/api/v1',
+  modelId: 'google/gemma-4-31b-it:free',
+  ttsProvider: 'openai',
+  ttsEndpoint: 'https://openrouter.ai/api/v1',
+  ttsModel: 'fish-audio/s2.1-pro-free:free',
+  ttsVoice: 'b347db033a6549378b48d00acb0d06cd',
+} as const satisfies Partial<AgentSettings>;
+
 export const DEFAULT_SETTINGS: AgentSettings = {
   agentName: 'Ava',
   idleMotion: true,
   gazeTracking: true,
-  modelEndpoint: '',
-  modelId: '',
+  modelEndpoint: OPENROUTER_FREE_PRESET.modelEndpoint,
+  modelId: OPENROUTER_FREE_PRESET.modelId,
   modelApiKey: '',
   characterVrmUrl: '',
   characterPrompt: 'You are Ava, a thoughtful, curious companion. Reply in the language the user speaks. Be concise and honest about what you know.',
   characterScale: 1,
   speechLanguage: 'ru-RU',
   ttsProvider: 'off',
-  ttsEndpoint: '',
-  ttsModel: '',
-  ttsVoice: 'alloy',
+  ttsEndpoint: OPENROUTER_FREE_PRESET.ttsEndpoint,
+  ttsModel: OPENROUTER_FREE_PRESET.ttsModel,
+  ttsVoice: OPENROUTER_FREE_PRESET.ttsVoice,
   ttsApiKey: '',
   sttProvider: 'off',
   sttEndpoint: '',

@@ -47,7 +47,13 @@ export class AmbientSystem extends createSystem({}) {
   }
 
   update(delta: number): void {
-    if (!avatarBody.available || avatarBody.performing) {
+    if (!avatarBody.available) return;
+    if (avatarBody.performing) {
+      if (this.phase > 0) {
+        avatarBody.setExpression(AMBIENT_EXPRESSIONS[this.index], 0);
+        this.phase = 0;
+        this.timer = this.nextInterval();
+      }
       return;
     }
     if (this.phase === 0) {
