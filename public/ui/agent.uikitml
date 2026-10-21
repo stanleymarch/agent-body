@@ -18,6 +18,8 @@
   .qr { width: 35; height: 35; flex-shrink: 0; }
   .feedback { font-family: 'Geologica'; font-weight: 300; width: 92; height: 9; font-size: 2.5; line-height: 1.2; color: #174ea6; overflow: hidden; flex-shrink: 0; }
   .editor { width: 92; flex-direction: column; gap: 1; padding-top: 1; padding-bottom: 1; background-color: #e8f0fe; flex-shrink: 0; }
+  .narrow { flex-grow: 0; flex-shrink: 0; flex-basis: 26; }
+  .hint { font-family: 'JetBrains Mono'; font-weight: 400; font-size: 2.2; line-height: 1.2; color: #4d5156; flex-grow: 1; flex-shrink: 1; overflow: hidden; justify-content: center; }
 </style>
 <Panel id="workspace-root" class="workspace">
   <div id="workspace-title" class="title">Ava / Dialogue</div>
@@ -103,6 +105,10 @@
     </div>
   </div>
   <div id="workspace-feedback" class="feedback">Ready.</div>
+  <div id="immersive-actions" class="row">
+    <Button id="workspace-panel-home" class="control narrow"><ButtonLabel class="label">Panel home</ButtonLabel></Button>
+    <div id="immersive-hint" class="hint">Hold the trigger to move it.</div>
+  </div>
   <div class="row">
     <Button id="workspace-enter-mr" class="control"><ButtonLabel class="label">Enter MR</ButtonLabel></Button>
     <Button id="workspace-enter-vr" class="control"><ButtonLabel class="label">Enter VR</ButtonLabel></Button>

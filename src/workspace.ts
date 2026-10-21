@@ -253,6 +253,10 @@ export class WorkspaceSystem extends createSystem({}) {
       show('workspace-enter-mr', !world.session && supportsMR);
       show('workspace-enter-vr', !world.session && supportsVR);
       show('workspace-exit', Boolean(world.session));
+      // Inside a session the panel is a world object the user can grab, so it
+      // gets a way back to the default spot and a hint about the grab.
+      show('immersive-actions', Boolean(world.session));
+      show('immersive-hint', Boolean(world.session));
     };
     disposers.push(onLocalLlmStatus((next) => {
       localStatus = next;
@@ -387,6 +391,11 @@ export class WorkspaceSystem extends createSystem({}) {
     action('workspace-edit-chat', () => edit('chat'));
     action('workspace-look', () => submit('Look at this'));
     action('workspace-listen', () => microphone());
+    // Horizon-style re-centre: put the panel back in front of the user.
+    action('workspace-panel-home', () => {
+      placePanelInFrontOfUser();
+      feedback('Panel placed in front of you.');
+    });
     action('workspace-save', () => { closeEditor(true); if (!editing) void save(); });
     action('workspace-test', () => {
       const provider = sub;
@@ -616,13 +625,20 @@ export class WorkspaceSystem extends createSystem({}) {
       // The head looks down its own -Z axis, its +X axis points right.
       const look = new Vector3(0, 0, -1).applyQuaternion(headRotation);
       const right = new Vector3(1, 0, 0).applyQuaternion(headRotation);
+      // A phone is held at arm's length, so there the panel sits closer, lower
+      // and larger; a headset keeps the roomy, off-centre placement.
+      const handheld = !supportsVR;
+      const distance = handheld ? 0.5 : 1.15;
+      const side = handheld ? -0.12 : -0.42;
+      const drop = handheld ? 0.22 : 0.18;
+      const scale = handheld ? 0.62 : PANEL_XR_SCALE;
       const position = headPosition.clone()
-        .add(look.multiplyScalar(1.15))
-        .add(right.multiplyScalar(-0.42));
-      position.y = headPosition.y - 0.18;
+        .add(look.multiplyScalar(distance))
+        .add(right.multiplyScalar(side));
+      position.y = headPosition.y - drop;
       object.position.copy(position);
       object.lookAt(headPosition);
-      object.scale.setScalar(PANEL_XR_SCALE);
+      object.scale.setScalar(scale);
       object.updateMatrixWorld(true);
     };
     panelEntity.addComponent(ScreenSpace, { width: '480px', height: '720px', top: '12px', right: '12px', zOffset: 0.4 });

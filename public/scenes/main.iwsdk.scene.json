@@ -9,24 +9,24 @@
       "intensity": 1
     }
   },
-  "resources": {},
+  "resources": {  },
   "authoring": {
-    "views": [{
-      "id": "hero",
-      "role": "hero",
-      "projection": "perspective",
-      "position": [0, 1.45, 1.3],
-      "target": [0, 1.05, -2.2],
-      "fov": 55
-    }]
+    "views": [
+      {
+        "id": "hero",
+        "role": "hero",
+        "projection": "perspective",
+        "position": [0, 1.45, 1.3],
+        "target": [0, 1.05, -2.2],
+        "fov": 55
+      }
+    ]
   },
   "nodes": [
     {
       "id": "avatar-ambient",
       "name": "Room Ambient Fill",
-      "components": {
-        "AmbientLight": { "color": [1, 1, 1, 1], "intensity": 0.28 }
-      }
+      "components": { "AmbientLight": { "color": [1, 1, 1, 1], "intensity": 0.28 } }
     },
     {
       "id": "avatar-hemisphere",
@@ -44,12 +44,7 @@
       "name": "Front Fill Light",
       "transform": { "position": [0, 2.55, 1.85] },
       "components": {
-        "PointLight": {
-          "color": [1, 0.96, 0.9, 1],
-          "intensity": 9,
-          "distance": 8,
-          "decay": 2
-        }
+        "PointLight": { "color": [1, 0.96, 0.9, 1], "intensity": 9, "distance": 8, "decay": 2 }
       }
     },
     {
@@ -57,12 +52,7 @@
       "name": "Pendant Light",
       "transform": { "position": [-0.35, 2.12, -2.6] },
       "components": {
-        "PointLight": {
-          "color": [1, 0.93, 0.83, 1],
-          "intensity": 12,
-          "distance": 9,
-          "decay": 2
-        }
+        "PointLight": { "color": [1, 0.93, 0.83, 1], "intensity": 12, "distance": 9, "decay": 2 }
       }
     },
     {
@@ -70,12 +60,7 @@
       "name": "Floor Lamp Light",
       "transform": { "position": [2.6, 1.55, -4.5] },
       "components": {
-        "PointLight": {
-          "color": [1, 0.84, 0.64, 1],
-          "intensity": 6,
-          "distance": 5,
-          "decay": 2
-        }
+        "PointLight": { "color": [1, 0.84, 0.64, 1], "intensity": 6, "distance": 5, "decay": 2 }
       }
     },
     {
@@ -85,7 +70,7 @@
       "content": { "type": "group" },
       "transform": { "position": [-2.55, 0.15, -1.35] },
       "components": {
-        "RayInteractable": {},
+        "RayInteractable": {  },
         "DistanceGrabbable": { "movementMode": "MoveFromTarget" },
         "PhysicsBody": { "state": "DYNAMIC", "linearDamping": 0.15, "angularDamping": 0.4 },
         "PhysicsShape": {
@@ -94,7 +79,8 @@
           "density": 0.5,
           "friction": 0.7,
           "restitution": 0
-        }
+        },
+        "PokeInteractable": {  }
       },
       "children": [
         {
@@ -111,9 +97,10 @@
       "content": { "type": "asset", "asset": "agent-panel" },
       "transform": { "position": [0.75, 1.2, -1.8], "scale": 0.72 },
       "components": {
-        "RayInteractable": {},
-        "DistanceGrabbable": { "movementMode": "MoveFromTarget", "scale": false },
-        "Visibility": { "isVisible": false }
+        "RayInteractable": {  },
+        "Visibility": { "isVisible": false },
+        "PokeInteractable": {  },
+        "DistanceGrabbable": { "movementMode": "MoveFromTarget", "scale": false }
       }
     },
     {
@@ -121,14 +108,14 @@
       "name": "Reading Room",
       "framingRole": "support",
       "content": { "type": "asset", "asset": "vr-space" },
-      "components": {}
+      "components": {  }
     },
     {
       "id": "locomotion-floor",
       "name": "Locomotion Floor",
       "framingRole": "support",
       "content": { "type": "asset", "asset": "locomotion-floor" },
-      "components": { "LocomotionEnvironment": {} }
+      "components": { "LocomotionEnvironment": {  } }
     },
     {
       "id": "collider-floor",
@@ -136,10 +123,7 @@
       "framingRole": "support",
       "content": { "type": "asset", "asset": "collider-room-floor" },
       "transform": { "position": [0, -0.1, -1.3] },
-      "components": {
-        "PhysicsBody": { "state": "STATIC" },
-        "PhysicsShape": { "shape": "Auto" }
-      }
+      "components": { "PhysicsBody": { "state": "STATIC" }, "PhysicsShape": { "shape": "Auto" } }
     },
     {
       "id": "collider-table",
@@ -147,10 +131,7 @@
       "framingRole": "support",
       "content": { "type": "asset", "asset": "collider-table" },
       "transform": { "position": [-0.35, 0.42, -2.6] },
-      "components": {
-        "PhysicsBody": { "state": "STATIC" },
-        "PhysicsShape": { "shape": "Auto" }
-      }
+      "components": { "PhysicsBody": { "state": "STATIC" }, "PhysicsShape": { "shape": "Auto" } }
     },
     {
       "id": "collider-sideboard",
@@ -158,10 +139,7 @@
       "framingRole": "support",
       "content": { "type": "asset", "asset": "collider-sideboard" },
       "transform": { "position": [0.55, 0.39, -4.92] },
-      "components": {
-        "PhysicsBody": { "state": "STATIC" },
-        "PhysicsShape": { "shape": "Auto" }
-      }
+      "components": { "PhysicsBody": { "state": "STATIC" }, "PhysicsShape": { "shape": "Auto" } }
     },
     {
       "id": "collider-sofa",
@@ -169,10 +147,7 @@
       "framingRole": "support",
       "content": { "type": "asset", "asset": "collider-sofa" },
       "transform": { "position": [1.35, 0.29, -2.6] },
-      "components": {
-        "PhysicsBody": { "state": "STATIC" },
-        "PhysicsShape": { "shape": "Auto" }
-      }
+      "components": { "PhysicsBody": { "state": "STATIC" }, "PhysicsShape": { "shape": "Auto" } }
     },
     {
       "id": "prop-book-rust",
@@ -181,10 +156,11 @@
       "content": { "type": "asset", "asset": "prop-book-rust" },
       "transform": { "position": [-0.72, 0.471, -2.56], "rotationDeg": [0, 14, 0] },
       "components": {
-        "RayInteractable": {},
+        "RayInteractable": {  },
         "DistanceGrabbable": { "movementMode": "MoveFromTarget" },
         "PhysicsBody": { "state": "DYNAMIC", "angularDamping": 0.6 },
-        "PhysicsShape": { "shape": "Auto", "density": 0.8, "friction": 0.7 }
+        "PhysicsShape": { "shape": "Auto", "density": 0.8, "friction": 0.7 },
+        "PokeInteractable": {  }
       }
     },
     {
@@ -194,10 +170,11 @@
       "content": { "type": "asset", "asset": "prop-book-mustard" },
       "transform": { "position": [-0.71, 0.507, -2.55], "rotationDeg": [0, 4, 0] },
       "components": {
-        "RayInteractable": {},
+        "RayInteractable": {  },
         "DistanceGrabbable": { "movementMode": "MoveFromTarget" },
         "PhysicsBody": { "state": "DYNAMIC", "angularDamping": 0.6 },
-        "PhysicsShape": { "shape": "Auto", "density": 0.8, "friction": 0.7 }
+        "PhysicsShape": { "shape": "Auto", "density": 0.8, "friction": 0.7 },
+        "PokeInteractable": {  }
       }
     },
     {
@@ -207,10 +184,11 @@
       "content": { "type": "asset", "asset": "prop-book-teal" },
       "transform": { "position": [-0.25, 0.473, -2.62], "rotationDeg": [0, -12, 0] },
       "components": {
-        "RayInteractable": {},
+        "RayInteractable": {  },
         "DistanceGrabbable": { "movementMode": "MoveFromTarget" },
         "PhysicsBody": { "state": "DYNAMIC", "angularDamping": 0.6 },
-        "PhysicsShape": { "shape": "Auto", "density": 0.8, "friction": 0.7 }
+        "PhysicsShape": { "shape": "Auto", "density": 0.8, "friction": 0.7 },
+        "PokeInteractable": {  }
       }
     },
     {
@@ -220,10 +198,11 @@
       "content": { "type": "asset", "asset": "prop-book-navy" },
       "transform": { "position": [0.55, 0.797, -4.92], "rotationDeg": [0, 6, 0] },
       "components": {
-        "RayInteractable": {},
+        "RayInteractable": {  },
         "DistanceGrabbable": { "movementMode": "MoveFromTarget" },
         "PhysicsBody": { "state": "DYNAMIC", "angularDamping": 0.6 },
-        "PhysicsShape": { "shape": "Auto", "density": 0.8, "friction": 0.7 }
+        "PhysicsShape": { "shape": "Auto", "density": 0.8, "friction": 0.7 },
+        "PokeInteractable": {  }
       }
     },
     {
@@ -233,10 +212,11 @@
       "content": { "type": "asset", "asset": "prop-mug" },
       "transform": { "position": [-0.45, 0.502, -2.35] },
       "components": {
-        "RayInteractable": {},
+        "RayInteractable": {  },
         "DistanceGrabbable": { "movementMode": "MoveFromTarget" },
         "PhysicsBody": { "state": "DYNAMIC", "angularDamping": 0.6 },
-        "PhysicsShape": { "shape": "Auto", "density": 0.7, "friction": 0.6 }
+        "PhysicsShape": { "shape": "Auto", "density": 0.7, "friction": 0.6 },
+        "PokeInteractable": {  }
       }
     },
     {
@@ -246,10 +226,11 @@
       "content": { "type": "asset", "asset": "prop-vase" },
       "transform": { "position": [0, 0.882, -4.92] },
       "components": {
-        "RayInteractable": {},
+        "RayInteractable": {  },
         "DistanceGrabbable": { "movementMode": "MoveFromTarget" },
         "PhysicsBody": { "state": "DYNAMIC", "angularDamping": 0.5 },
-        "PhysicsShape": { "shape": "Auto", "density": 0.9, "friction": 0.6 }
+        "PhysicsShape": { "shape": "Auto", "density": 0.9, "friction": 0.6 },
+        "PokeInteractable": {  }
       }
     },
     {
@@ -259,10 +240,11 @@
       "content": { "type": "asset", "asset": "prop-brass-sphere" },
       "transform": { "position": [0.05, 0.522, -2.5] },
       "components": {
-        "RayInteractable": {},
+        "RayInteractable": {  },
         "DistanceGrabbable": { "movementMode": "MoveFromTarget" },
         "PhysicsBody": { "state": "DYNAMIC", "angularDamping": 0.2 },
-        "PhysicsShape": { "shape": "Auto", "density": 2.2, "friction": 0.5, "restitution": 0.4 }
+        "PhysicsShape": { "shape": "Auto", "density": 2.2, "friction": 0.5, "restitution": 0.4 },
+        "PokeInteractable": {  }
       }
     },
     {
@@ -272,10 +254,11 @@
       "content": { "type": "asset", "asset": "prop-keepsake-box" },
       "transform": { "position": [1.05, 0.832, -4.9], "rotationDeg": [0, -8, 0] },
       "components": {
-        "RayInteractable": {},
+        "RayInteractable": {  },
         "DistanceGrabbable": { "movementMode": "MoveFromTarget" },
         "PhysicsBody": { "state": "DYNAMIC", "angularDamping": 0.6 },
-        "PhysicsShape": { "shape": "Auto", "density": 0.9, "friction": 0.7 }
+        "PhysicsShape": { "shape": "Auto", "density": 0.9, "friction": 0.7 },
+        "PokeInteractable": {  }
       }
     },
     {
@@ -285,10 +268,11 @@
       "content": { "type": "asset", "asset": "prop-cushion-cream" },
       "transform": { "position": [1.32, 0.647, -3.1], "rotationDeg": [0, 8, 0] },
       "components": {
-        "RayInteractable": {},
+        "RayInteractable": {  },
         "DistanceGrabbable": { "movementMode": "MoveFromTarget" },
         "PhysicsBody": { "state": "DYNAMIC", "linearDamping": 0.2, "angularDamping": 0.7 },
-        "PhysicsShape": { "shape": "Auto", "density": 0.35, "friction": 0.9 }
+        "PhysicsShape": { "shape": "Auto", "density": 0.35, "friction": 0.9 },
+        "PokeInteractable": {  }
       }
     },
     {
@@ -298,10 +282,11 @@
       "content": { "type": "asset", "asset": "prop-cushion-sage" },
       "transform": { "position": [1.32, 0.647, -2.05], "rotationDeg": [0, -10, 0] },
       "components": {
-        "RayInteractable": {},
+        "RayInteractable": {  },
         "DistanceGrabbable": { "movementMode": "MoveFromTarget" },
         "PhysicsBody": { "state": "DYNAMIC", "linearDamping": 0.2, "angularDamping": 0.7 },
-        "PhysicsShape": { "shape": "Auto", "density": 0.35, "friction": 0.9 }
+        "PhysicsShape": { "shape": "Auto", "density": 0.35, "friction": 0.9 },
+        "PokeInteractable": {  }
       }
     }
   ]

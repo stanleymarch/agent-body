@@ -6,6 +6,7 @@
  */
 
 import { World } from '@iwsdk/core';
+import { ACESFilmicToneMapping } from 'three';
 import projectOptions from 'virtual:iwsdk-project';
 // Must be imported before the UIKitML panel asset is loaded: it widens the
 // MSDF atlas charset so Cyrillic and underscores render instead of boxes.
@@ -31,6 +32,12 @@ World.create(
   document.getElementById('scene-container') as HTMLDivElement,
   projectOptions,
 ).then((world) => {
+  // IWSDK renders with NoToneMapping, so every value above 1.0 clips hard to
+  // white - the pale VRM and the bright room ended up flat. ACES rolls the
+  // highlights off instead of cutting them.
+  world.renderer.toneMapping = ACESFilmicToneMapping;
+  world.renderer.toneMappingExposure = 1.0;
+
   world.registerSystem(BrowserMouseLookSystem);
   world.registerSystem(AvatarSystem);
   world.registerSystem(AmbientSystem);

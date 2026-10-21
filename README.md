@@ -162,7 +162,18 @@ the panel, which suppressed the teleport. The distance is a compromise: closer
 than a metre put the panel's lower rows at the edge of the field of view, where
 the perspective piles the buttons on top of each other. The panel is
 `DistanceGrabbable`, so it can be grabbed and moved (and rotated) with a
-controller at any time.
+controller at any time. Verified in the emulator: aiming the right controller
+at the panel (ray hit at 1.02 m), pulling the trigger and moving the controller
+by `(+0.30, +0.12, -0.30)` moves the panel by exactly that delta, and the panel
+stays where it was released instead of snapping back. A **Panel home** button
+(immersive sessions only) puts it back in front of the user, and a one-line hint
+("Hold the trigger to move it") teaches the gesture. The panel also carries
+`PokeInteractable`, which the IWSDK docs require for touch input, so the same
+panel works with a finger.
+
+Buttons need a *tap*, not a hold: the pointer library only emits a `click` when
+the press and the release are inside its click threshold (800 ms for the XR ray
+pointer), so a long press on a button does not activate it.
 
 Two UIKit drawing details needed a fix for the panel to look solid. UIKit draws
 the panel in the transparent pass **without writing depth**, and the renderer
@@ -323,6 +334,18 @@ emulator: https://iwsdk.dev/guides/02-testing-experience.html#iwer-controls
   the grabbable plant and props. State, avatar and conversation persist across
   mode switches; the panel is re-placed for the user on every session start.
 
+**Phones.** WebXR `immersive-ar` exists in Chrome on Android (ARCore), so the
+MR button can start a passthrough session there; iOS Safari has no WebXR at
+all, so iPhones are out. The session request survives the difference: every
+optional feature in `iwsdk.config.json` is offered as *optional*, so a device
+without mesh detection or hand tracking still starts the session. What a phone
+does not have is a controller: props cannot be distance-grabbed with a finger
+(they are pokeable, so a tap nudges them), the panel cannot be dragged, and the
+`Panel home` button is the way to put it back. The panel is also placed
+differently there - 0.5 m ahead, 0.12 m left, 0.22 m down and 0.62 scale
+instead of the headset placement - because a phone is held at arm's length.
+None of this has been verified on real hardware.
+
 ## Character and rendering
 
 `public/vrm/user.vrm` is VRoid AvatarSample_D (VRM 1.0), presented as Ava,
@@ -332,6 +355,12 @@ lights (supplied by the scene), not just an IBL map — and it multiplies them
 into a pale model, so the room lights it with ambient 0.28, hemisphere 0.4 and
 point lights (front fill, pendant, floor lamp) only. The directional keys that
 used to be there clipped the dress and the face to flat white.
+
+IWSDK renders with `NoToneMapping`, which means every value above 1.0 cuts
+straight to white instead of rolling off. That was the other half of the
+"burned out avatar" look: the app now sets `ACESFilmicToneMapping` with an
+exposure of 1.0 (`src/index.ts`), so highlights compress instead of clipping
+and the room keeps its colour in the window light and the lamp.
 
 **Asset rights:** the bundled VRM's metadata declares restricted
 redistribution/modification and personal non-profit use. Its presence is not
