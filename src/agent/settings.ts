@@ -24,7 +24,8 @@ export const agentSettingsSchema = z.object({
 
 /** WebLLM model ids are resolved against WebLLM's prebuilt model list. */
 export const LOCAL_LLM_ENDPOINT = 'local://webllm';
-export const LOCAL_LLM_MODEL = 'gemma3-1b-it-q4f16_1-MLC';
+/** `auto` picks the model that fits the device at load time (see local-model.ts). */
+export const LOCAL_LLM_MODEL = 'auto';
 export const LOCAL_STT_MODEL = 'onnx-community/whisper-base';
 export const LOCAL_TTS_MODEL = 'Xenova/mms-tts-rus';
 export const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1';
@@ -43,8 +44,9 @@ export const LOCAL_PRESET = {
   sttProvider: 'local',
   sttModel: LOCAL_STT_MODEL,
   sttEndpoint: '',
-  ttsProvider: 'local',
-  ttsModel: LOCAL_TTS_MODEL,
+  // The operating-system voice is local, free and intelligible; the on-device
+  // neural voice (MMS-TTS) stays available but is much harder to understand.
+  ttsProvider: 'browser',
   ttsVoice: '',
 } as const satisfies Partial<AgentSettings>;
 

@@ -1,14 +1,17 @@
-import { createSystem, ScreenSpace, SessionMode, UIKitMLAsset, Visibility, VisibilityState } from '@iwsdk/core';
+import { createSystem, InputActions, InputComponent, ScreenSpace, SessionMode, UIKitMLAsset, Visibility, VisibilityState } from '@iwsdk/core';
+import { Mesh, Quaternion, Vector3 } from 'three';
 import qrcode from 'qrcode-generator';
 import { agentState } from './agent/state.js';
 import { FREE_PRESET, LOCAL_PRESET, PAID_PRESET, isLocalLlmEndpoint } from './agent/settings.js';
 import { agentBrain } from './agent/brain.js';
 import { getLocalLlmStatus, onLocalLlmStatus } from './agent/local-llm.js';
+import { describeLocalModel, setLocalImmersiveSession } from './agent/local-model.js';
 import { describeVoice, listVoices, voiceCycle } from './agent/voices.js';
 import type { AgentSettings, MemoryRecord } from './agent/contracts.js';
 import { speak, hush, getSpeechStatus, onSpeechStatus } from './agent/tts.js';
 import { startListening, cancelListening, type ListeningSession } from './agent/stt.js';
 import { getCharacterStatus, onCharacterStatus, BUNDLED_CHARACTER_PRESET } from './agent/character.js';
+import { buildCharacterCard, parseCharacterCard, serializeCharacterCard } from './agent/character-card.js';
 import { getAvatarCue, onAvatarCue } from './agent/cues.js';
 import { getPerceptionStatus, onPerceptionStatus, getRoomSummary } from './agent/perception.js';
 import { createPairingOffer, consumePairingUrl, parsePairingFragment, type PairingOffer } from './pairing.js';
@@ -17,7 +20,11 @@ import './workspace.css';
 
 const TAB_LABELS: Record<WorkspaceTab, string> = { chat: 'Dialogue', character: 'Character', connections: 'Connections', memory: 'Memory' };
 const SUB_LABELS: Record<ConnectionTab, string> = { llm: 'LLM', stt: 'STT', tts: 'TTS', transfer: 'Transfer' };
-type EditorTarget = SettingField | 'chat' | 'note' | 'search' | 'pin';
+/** The panel is smaller in an immersive session so it does not fill the view. */
+const PANEL_XR_SCALE = 0.5;
+/** Draw the panel after the scene's transparent objects (see WorkspaceSystem.update). */
+const PANEL_RENDER_ORDER = 20;
+type EditorTarget = SettingField | 'chat' | 'note' | 'search' | 'pin' | 'card';
 
 // Capture only in memory and remove the encrypted fragment before world bootstrap.
 // No PIN or ciphertext is written to storage, analytics, or logs.
@@ -30,6 +37,23 @@ export class WorkspaceSystem extends createSystem({}) {
     const world = this.world;
     const panel = world.requireSceneObject<UIKitMLAsset>('agent-panel');
     const panelEntity = world.requireSceneEntity('agent-panel');
+    const authoredPanelScale = (panelEntity.object3D?.scale ?? new Vector3(1, 1, 1)).clone();
+    // UIKit paints the panel in the transparent pass without depth writes, and
+    // the renderer sorts transparent objects near-to-far for UI readability,
+    // so the scene behind painted over the panel and it looked translucent.
+    // See update(): the whole panel is drawn after the scene's transparent
+    // objects instead.
+    // Teleport aiming: IWSDK binds the arc to the thumbstick pushed down, so
+    // the marker appears wherever that stick points. Holding the trigger aims
+    // the arc as well, which is the gesture most people try first; the arc is
+    // suppressed while the ray points at a panel button.
+    world.input.actions.addBinding({
+      source: 'xrGamepad',
+      action: InputActions.LocomotionTeleportAim,
+      kind: 'button',
+      handedness: 'right',
+      button: InputComponent.Trigger,
+    });
     const disposers: (() => void)[] = [];
     let disposed = false;
     let receivingUrl = pendingPairingUrl;
@@ -144,7 +168,8 @@ export class WorkspaceSystem extends createSystem({}) {
       const motion = cue && (cue.emotion !== 'neutral' || cue.gesture !== 'none') ? ` / ${cue.emotion} / ${cue.gesture}` : '';
       const local = isLocalLlmEndpoint(settings.modelEndpoint);
       const localProgress = local && localStatus ? ` / ${localStatus}` : '';
-      setText('workspace-status', `${Object.keys(pending).length ? 'Unsaved changes / ' : ''}${agentBrain.mode === 'live' ? `LLM: ${settings.modelId}${local ? ' (local WebGPU)' : ''}` : 'Offline demo / no authenticated LLM'}${localProgress}${motion}`);
+      const modelLabel = local ? `${describeLocalModel(settings.modelId)}, local WebGPU` : settings.modelId;
+      setText('workspace-status', `${Object.keys(pending).length ? 'Unsaved changes / ' : ''}${agentBrain.mode === 'live' ? `LLM: ${modelLabel}` : 'Offline demo / no authenticated LLM'}${localProgress}${motion}`);
       for (const key of Object.keys(TAB_LABELS) as WorkspaceTab[]) tintChip(`nav-${key}`, tab === key ? '#d2e3fc' : '#f1f3f4');
       for (const key of Object.keys(SUB_LABELS) as ConnectionTab[]) tintChip(`sub-${key}`, sub === key ? '#d2e3fc' : '#f1f3f4');
       show('connection-tabs', connection);
@@ -165,7 +190,7 @@ export class WorkspaceSystem extends createSystem({}) {
       } else if (transfer) {
         body = receivingUrl ? 'Encrypted settings received. Enter the 6-digit PIN from the sending device, then Apply settings. The link expires after 10 minutes. Skip discards this link without changing your settings.' : 'Encrypted settings transfer. Save settings first, generate a QR, then scan/open its link on the receiver and enter the PIN. QR + PIN together are secret. Expires after 10 minutes. No memory or dialogue is transferred.';
       } else {
-        body = sub === 'llm' ? 'Presets fill this draft; Save applies them. Full local runs Gemma 3 1B through WebGPU with on-device Whisper and an on-device voice: no key, no audio and no text leaves the device. Free APIs uses OpenRouter Nemotron free with the free browser/OS speech of this machine. Paid APIs uses Gemma 4 31B and asks OpenRouter to sort providers by price. API keys are never copied or cleared by a preset and are never bundled.' : sub === 'stt' ? 'Independent speech recognition. The browser engine is free: with the on-device speech pack it never uploads audio, otherwise the browser vendor recognises it in the cloud. On-device Whisper runs through WebGPU, downloads once, and never uploads audio. OpenAI-compatible STT records only while active. Test records and displays a transcript without sending it to the LLM.' : 'Independent speech output. The on-device voice (MMS TTS) runs locally and never sends the text anywhere. Browser voices are the free OS voices of this machine; a female voice is picked first and Next voice cycles them. The Fish free preset uses the OpenAI-compatible audio/speech endpoint instead. Copy LLM key to TTS is an explicit separate action.';
+        body = sub === 'llm' ? 'Presets fill this draft; Save applies them. Full local runs a WebGPU model with on-device Whisper and the local OS voice: no key, no audio and no text leaves the device. Free APIs uses OpenRouter Nemotron free with the free browser/OS speech of this machine. Paid APIs uses Gemma 4 31B and asks OpenRouter to sort providers by price. API keys are never copied or cleared by a preset and are never bundled.' : sub === 'stt' ? 'Independent speech recognition. The browser engine is free: with the on-device speech pack it never uploads audio, otherwise the browser vendor recognises it in the cloud. On-device Whisper runs through WebGPU, downloads once, and never uploads audio. OpenAI-compatible STT records only while active. Test records and displays a transcript without sending it to the LLM.' : 'Independent speech output. The browser voice is the free OS voice of this machine, a female voice is picked first and Next voice cycles them. The on-device voice (MMS TTS) never sends the text anywhere, but it is much harder to understand than the OS voice. The Fish free preset uses the OpenAI-compatible audio/speech endpoint instead. Copy LLM key to TTS is an explicit separate action.';
       }
       setText('workspace-body', body);
       show('record-navigation', history && !editing);
@@ -187,6 +212,7 @@ export class WorkspaceSystem extends createSystem({}) {
       setText('workspace-test-label', sub === 'stt' && capture ? 'Stop test' : `Test ${sub.toUpperCase()}`);
       show('workspace-clear-key', fields.some((field) => field.kind === 'secret'));
       show('workspace-preset', character);
+      show('character-actions', character && !editing);
       show('llm-presets', connection && sub === 'llm' && !editing);
       show('connection-actions', connection && !transfer && !editing && sub === 'tts');
       show('workspace-copy-key', sub === 'tts');
@@ -266,6 +292,18 @@ export class WorkspaceSystem extends createSystem({}) {
         else if (target === 'note') { if (value.trim()) void agentState.addMemory(value, 'note').then(() => feedback('Note saved on this device.')).catch(reportError); }
         else if (target === 'search') { search = value.trim(); page = 0; refreshRecords(); }
         else if (target === 'pin') { receivingPin = value.replace(/\D/gu, '').slice(0, 6); feedback(receivingPin.length === 6 ? 'PIN ready. Press Apply settings.' : 'Enter all 6 PIN digits.', receivingPin.length !== 6); }
+        else if (target === 'card') {
+          try {
+            const card = parseCharacterCard(value);
+            changeDraft({
+              ...(card.name ? { agentName: card.name } : {}),
+              ...(card.prompt ? { characterPrompt: card.prompt } : {}),
+            });
+            feedback('Character card imported into the draft. Save to apply it.');
+          } catch (error) {
+            feedback(error instanceof Error ? error.message : 'This card could not be read.', true);
+          }
+        }
         else if (target.kind !== 'secret' || value !== '') changeDraft({ [target.key]: target.kind === 'number' ? Number(value) : value });
       }
       render();
@@ -296,7 +334,7 @@ export class WorkspaceSystem extends createSystem({}) {
       input.inputMode = target === 'pin' ? 'numeric' : 'text';
       secretInput.hidden = !secret; textInput.hidden = secret;
       input.value = typeof target === 'object' ? secret ? '' : String(draft[target.key]) : target === 'search' ? search : '';
-      const label = typeof target === 'object' ? target.label : target === 'chat' ? 'Message' : target === 'note' ? 'New memory note' : target === 'pin' ? 'Receiver PIN (6 digits)' : 'Search saved notes and facts';
+      const label = typeof target === 'object' ? target.label : target === 'chat' ? 'Message' : target === 'note' ? 'New memory note' : target === 'pin' ? 'Receiver PIN (6 digits)' : target === 'card' ? 'Paste a character card (JSON)' : 'Search saved notes and facts';
       bridgeLabel.textContent = label;
       bridgeLabel.htmlFor = input.id;
       setText('workspace-editor-label', typeof target === 'object' ? `${label}${target.help ? ` / ${target.help}` : ''}` : label);
@@ -346,7 +384,7 @@ export class WorkspaceSystem extends createSystem({}) {
     action('workspace-preset', () => { changeDraft({ characterVrmUrl: '', characterScale: 1 }); feedback('Bundled character selected in draft. Save to apply.'); render(); });
     action('workspace-local-preset', () => {
       changeDraft(LOCAL_PRESET);
-      feedback('Full-local draft: Gemma 3 1B via WebGPU, on-device Whisper, on-device voice. First use downloads all three models; no API key and no data leaves the device. Save to apply.');
+      feedback('Full-local draft: Gemma 3 1B via WebGPU, on-device Whisper, the local OS voice (female voice preferred). First use downloads the models; no API key and no data leaves the device. Save to apply.');
       render();
     });
     action('workspace-free-preset', () => {
@@ -376,6 +414,37 @@ export class WorkspaceSystem extends createSystem({}) {
         render();
       });
     });
+    action('workspace-export-card', () => {
+      const card = buildCharacterCard({
+        name: draft.agentName,
+        prompt: draft.characterPrompt,
+        scenario: '',
+        model: draft.characterVrmUrl || BUNDLED_CHARACTER_PRESET.modelName,
+      });
+      const json = serializeCharacterCard(card);
+      const slug = (draft.agentName || 'ava')
+        .toLowerCase()
+        .replace(/[^a-z0-9а-яё]+/gu, '-')
+        .replace(/^-+|-+$/gu, '') || 'ava';
+      const fileName = `${slug}.chara_card_v3.json`;
+      try {
+        const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+        feedback(`Character card exported: ${fileName} (chara_card_v3).`);
+      } catch (error) {
+        reportError(error);
+      }
+      if (navigator.clipboard?.writeText) {
+        void navigator.clipboard.writeText(json)
+          .then(() => feedback(`Character card exported and copied to the clipboard (${fileName}).`))
+          .catch(() => { /* the download already happened */ });
+      }
+    });
+    action('workspace-import-card', () => edit('card'));
     action('workspace-memory-add', () => edit('note'));
     action('workspace-memory-search', () => edit('search'));
     action('workspace-memory-reset', () => { search = ''; page = 0; refreshRecords(); });
@@ -501,15 +570,73 @@ export class WorkspaceSystem extends createSystem({}) {
       panelEntity.setValue(ScreenSpace, 'width', `${width}px`);
       panelEntity.setValue(ScreenSpace, 'height', `${height}px`);
     };
+    /**
+     * In an immersive session the panel is a world object, so it is placed in
+     * front of the player and turned towards them. It stays grabbable, so the
+     * user can move it wherever they want it.
+     */
+    /**
+     * In an immersive session the panel is a world object, so it is placed
+     * beside the user and turned towards them. It stays off the centre of the
+     * view - the companion and the teleport arc need that space - and it
+     * remains grabbable, so the user can move it wherever they want it.
+     */
+    const placePanelInFrontOfUser = (): void => {
+      const head = world.player?.head;
+      const object = panelEntity.object3D;
+      if (!head || !object) return;
+      const headPosition = new Vector3();
+      const headRotation = new Quaternion();
+      head.getWorldPosition(headPosition);
+      head.getWorldQuaternion(headRotation);
+      // The head looks down its own -Z axis, its +X axis points right.
+      const look = new Vector3(0, 0, -1).applyQuaternion(headRotation);
+      const right = new Vector3(1, 0, 0).applyQuaternion(headRotation);
+      const position = headPosition.clone()
+        .add(look.multiplyScalar(1.15))
+        .add(right.multiplyScalar(-0.42));
+      position.y = headPosition.y - 0.18;
+      object.position.copy(position);
+      object.lookAt(headPosition);
+      object.scale.setScalar(PANEL_XR_SCALE);
+      object.updateMatrixWorld(true);
+    };
     panelEntity.addComponent(ScreenSpace, { width: '480px', height: '720px', top: '12px', right: '12px', zOffset: 0.4 });
     resize();
     window.addEventListener('resize', resize);
     const updateMode = (state: VisibilityState): void => {
       const immersive = state !== VisibilityState.NonImmersive;
       document.body.classList.toggle('workspace-immersive', immersive);
+      // The local model tier is chosen by what the device can afford.
+      setLocalImmersiveSession(immersive);
       panelEntity.setValue(Visibility, 'isVisible', true);
       const space = world.getSceneObject('vr-space');
       if (space) space.visible = !immersive || world.session?.environmentBlendMode === 'opaque';
+      // The plant belongs to the virtual room. In MR the real room is the
+      // environment, so a virtual plant floating in it is noise.
+      const plant = world.getSceneObject('plant-sansevieria');
+      if (plant) plant.visible = !immersive || world.session?.environmentBlendMode === 'opaque';
+      if (immersive) {
+        // The head only has its real transform once the XR reference space is
+        // applied, so the panel is placed on the first frame of the session.
+        let unsubscribe: (() => void) | undefined;
+        unsubscribe = world.onXRFrame(() => {
+          placePanelInFrontOfUser();
+          unsubscribe?.();
+        });
+      } else {
+        panelEntity.object3D?.scale.copy(authoredPanelScale);
+      }
+      // In the browser emulator the arrow keys drive the emulated thumbstick,
+      // so the keyboard locomotion would fight the XR locomotion (the stick
+      // down aims a teleport while the same key slides the player off the
+      // floor). Inside a session only the headset and controllers count.
+      const keyboardBindings = world.input.actions.getBindings()
+        .filter((binding) => binding.source === 'keyboard');
+      for (const binding of keyboardBindings) {
+        if (immersive) world.input.actions.removeBinding(binding);
+        else world.input.actions.addBinding(binding);
+      }
       render();
     };
     if (navigator.xr && world.xrEnabled) {
@@ -538,6 +665,22 @@ export class WorkspaceSystem extends createSystem({}) {
       for (const dispose of disposers) dispose();
       document.body.classList.remove('workspace-immersive');
       bridge.remove();
+    });
+  }
+
+  /**
+   * UIKit draws the panel in the transparent pass without depth writes, and
+   * the renderer sorts transparent objects near-to-far for UI readability, so
+   * the room floor grid painted over the panel and it looked translucent.
+   * Drawing the panel after the scene's transparent objects fixes that. Its
+   * own layering is unchanged because every panel mesh shares the order.
+   */
+  update(): void {
+    const panel = this.world.getSceneObject('agent-panel') as UIKitMLAsset | undefined;
+    panel?.document?.traverse((object) => {
+      const mesh = object as Mesh;
+      if (!mesh.isMesh) return;
+      if (mesh.renderOrder !== PANEL_RENDER_ORDER) mesh.renderOrder = PANEL_RENDER_ORDER;
     });
   }
 }

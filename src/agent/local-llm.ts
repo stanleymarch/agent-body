@@ -3,6 +3,7 @@ import type {
   ChatCompletionMessageParam,
   WebWorkerMLCEngine,
 } from '@mlc-ai/web-llm';
+import { resolveLocalModel, type LocalModelInfo } from './local-model.js';
 
 /** Plain OpenAI-style history; the local preset deliberately has no tools. */
 export interface LocalLlmMessage {
@@ -61,11 +62,12 @@ function createWorker(): Worker {
   return new Worker(new URL('./local-llm.worker.ts', import.meta.url), { type: 'module' });
 }
 
-async function ensureEngine(modelId: string): Promise<WebWorkerMLCEngine> {
+async function ensureEngine(model: LocalModelInfo): Promise<WebWorkerMLCEngine> {
+  const modelId = model.id;
   if (engine && loadedModel === modelId) return engine;
   if (loading) {
     await loading;
-    return ensureEngine(modelId);
+    return ensureEngine(model);
   }
   loading = (async () => {
     await assertWebGpu();
@@ -85,7 +87,7 @@ async function ensureEngine(modelId: string): Promise<WebWorkerMLCEngine> {
         initProgressCallback: ({ text }) => setStatus(text),
       });
     } else {
-      setStatus(`Loading ${modelId}...`);
+      setStatus(`Loading ${model.label} (${model.vramMB} MB VRAM)...`);
       await engine.reload(modelId);
     }
     loadedModel = modelId;
@@ -93,6 +95,23 @@ async function ensureEngine(modelId: string): Promise<WebWorkerMLCEngine> {
     return engine;
   })().finally(() => { loading = null; });
   return loading;
+}
+
+/**
+ * Small local models sometimes repeat the same sentence. The repetition is
+ * dropped from the model's own text; nothing is invented or rewritten.
+ */
+function collapseRepeatedSentences(text: string): string {
+  const sentences = text.split(/(?<=[.!?…])\s+/u);
+  const kept: string[] = [];
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (!trimmed) continue;
+    const previous = kept[kept.length - 1]?.trim().toLowerCase();
+    if (previous === trimmed.toLowerCase()) continue;
+    kept.push(trimmed);
+  }
+  return kept.join(' ').trim();
 }
 
 /**
@@ -104,7 +123,8 @@ export async function completeLocalLlm(
   modelId: string,
   signal: AbortSignal,
 ): Promise<string> {
-  const active = await ensureEngine(modelId);
+  const model = resolveLocalModel(modelId);
+  const active = await ensureEngine(model);
   if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
   const interrupt = (): void => { void active.interruptGenerate(); };
@@ -113,8 +133,10 @@ export async function completeLocalLlm(
     const completion = await active.chat.completions.create({
       messages: messages as ChatCompletionMessageParam[],
       stream: true,
-      temperature: 0.7,
-      max_tokens: 512,
+      temperature: model.compact ? 0.6 : 0.7,
+      max_tokens: model.compact ? 160 : 512,
+      // Small models loop; a mild repetition penalty keeps the answer usable.
+      ...(model.compact ? { repetition_penalty: 1.15 } : {}),
     });
     let reply = '';
     for await (const chunk of completion as AsyncIterable<ChatCompletionChunk>) {
@@ -122,7 +144,7 @@ export async function completeLocalLlm(
       reply += chunk.choices[0]?.delta?.content ?? '';
     }
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-    return reply;
+    return collapseRepeatedSentences(reply);
   } finally {
     signal.removeEventListener('abort', interrupt);
   }

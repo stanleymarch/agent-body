@@ -19,6 +19,7 @@ import { agentBrain } from './agent/brain.js';
 import { avatarBody } from './avatar-body.js';
 import { WorkspaceSystem } from './workspace.js';
 import { bindPerception } from './agent/perception.js';
+import { describeLocalModel, resolveLocalModel, setLocalImmersiveSession } from './agent/local-model.js';
 
 // The workspace palette is light and the custom text colors assume a light
 // surface. The color scheme is pinned in iwsdk.config.json
@@ -41,6 +42,7 @@ World.create(
       agentState,
       agentBrain,
       avatarBody,
+      localModel: { resolveLocalModel, describeLocalModel, setLocalImmersiveSession },
       pairing: { createPairingOffer, consumePairingUrl },
     };
   }

@@ -63,7 +63,11 @@
       "name": "Immersive Workspace",
       "content": { "type": "asset", "asset": "agent-panel" },
       "transform": { "position": [0.75, 1.2, -1.8], "scale": 0.72 },
-      "components": { "RayInteractable": {}, "Visibility": { "isVisible": false } }
+      "components": {
+        "RayInteractable": {},
+        "DistanceGrabbable": { "movementMode": "MoveFromTarget", "scale": false },
+        "Visibility": { "isVisible": false }
+      }
     },
     {
       "id": "vr-space",

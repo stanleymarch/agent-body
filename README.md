@@ -64,7 +64,7 @@ applies them, and no preset ever copies, clears or bundles a key.
 
 | Preset | Model | Speech in | Speech out | Key |
 | --- | --- | --- | --- | --- |
-| **Full local** | Gemma 3 1B (WebLLM, WebGPU) | on-device Whisper | on-device MMS-TTS (Russian) | none |
+| **Full local** | WebGPU model, picked per device | on-device Whisper | local OS voice (female first) | none |
 | **Free APIs** | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | browser/OS | browser/OS | OpenRouter key only |
 | **Paid APIs** | `google/gemma-4-31b-it`, OpenRouter sorts providers by price | browser/OS | browser/OS | OpenRouter key |
 
@@ -75,24 +75,40 @@ rate-limit at any time; 429s are reported, never answered by invention.
 
 ### Full local: what actually runs
 
-- **LLM** — `@mlc-ai/web-llm` in a module worker: `gemma3-1b-it-q4f16_1-MLC`,
-  ~537 MB of weights, ~711 MB VRAM. Two WebLLM quirks are patched in
-  `src/agent/local-llm.ts`: the model is cached in IndexedDB (the Cache API
-  rejects Hugging Face's Xet CDN responses), and Gemma 3 needs
-  `context_window_size: -1` plus `attention_sink_size: 0` because it uses a
-  sliding window. Verified end-to-end on the emulator: the weights download, the
-  model loads and answers ("Hello! It's a pleasure to meet you.").
+- **LLM** — `@mlc-ai/web-llm` in a module worker. The model id in the panel is
+  `auto`, and `src/agent/local-model.ts` resolves it **at load time**, not when
+  the preset is applied, so the same settings still fit the device that opens
+  them (the settings travel to a headset over the encrypted QR transfer):
+
+  | Model | VRAM | Download | When it is chosen |
+  | --- | --- | --- | --- |
+  | Gemma 3 1B (`gemma3-1b-it-q4f16_1-MLC`) | 711 MB | 537 MB | flat browser, ≥ 4 GB reported memory — best Russian of the small class |
+  | SmolLM2 360M (`SmolLM2-360M-Instruct-q4f16_1-MLC`) | 376 MB | 194 MB | inside an immersive session, or ≤ 4 GB — headset-safe, English-oriented |
+  | Qwen2.5 0.5B (`Qwen2.5-0.5B-Instruct-q4f16_1-MLC`) | 945 MB | 265 MB | typed by hand — multilingual, but the vocabulary table is heavy |
+
+  Two WebLLM quirks are patched in `src/agent/local-llm.ts`: the model is cached
+  in IndexedDB (the Cache API rejects Hugging Face's Xet CDN responses), and
+  Gemma 3 needs `context_window_size: -1` plus `attention_sink_size: 0`
+  because it uses a sliding window. Verified end-to-end on the emulator: Gemma
+  3 1B downloads (537 MB), loads and answers ("Hello! It's a pleasure to meet
+  you."), SmolLM2 360M downloads (194 MB), loads and answers, and Qwen2.5 0.5B
+  downloads (265 MB), loads and answers ("Hello! How can I assist you today?").
+  Qwen is the slowest of the three to start because its vocabulary table alone
+  is ~150 MB of the download; it is a hand-typed option, not the auto pick.
   The local path is text-only — a 1B model has no image input, so an explicit
   "look at this" is refused with a message instead of a fake description — and
-  it has no reliable tool calling, so the avatar stays neutral there.
+  it has no reliable tool calling, so the avatar stays neutral there. Small
+  models loop, so the local path also applies a mild repetition penalty and
+  drops an immediately repeated sentence from the model's own text.
 - **STT** — `onnx-community/whisper-base` through `@huggingface/transformers`
   (WebGPU, fp32 encoder / q4 decoder). The recording is decoded and resampled
   to 16 kHz mono in the page; audio never leaves the device.
-- **TTS** — `Xenova/mms-tts-rus` (VITS, byte-level tokenizer, so no espeak
-  phonemizer is needed and Russian works out of the box) through the same
-  transformers.js runtime, played with Web Audio. Verified: the voice model
-  downloads, the audio plays, and the avatar plays its speaking clip with
-  visemes while the audio runs.
+- **TTS** — the operating-system voice (see below). The on-device neural voice
+  `Xenova/mms-tts-rus` (VITS, byte-level tokenizer, so no espeak phonemizer is
+  needed and Russian works out of the box) is still selectable under
+  **TTS → On-device voice**, and it downloads, synthesises and plays with the
+  avatar's speaking clip — but it is much harder to understand than the OS
+  voice, so it is not the preset default.
 
 ### Browser/OS speech: the free tier
 
@@ -120,10 +136,67 @@ Not verified on hardware. What the facts say: Meta ships WebGPU in the Horizon
 browser as **experimental** (and in WebXR), so the full-local tier may not be
 available in the headset browser at all; the app detects that and reports
 "Full local mode needs WebGPU…" instead of failing silently. Quest 3 has 8 GB
-of shared RAM, and the local tier needs ~0.7 GB of VRAM for the model, ~0.5 GB
-of weights in storage plus Whisper and the voice model, on top of the browser
-and the VRM scene. That is plausible in the flat browser and risky inside an
-immersive session. The API presets are the practical path on the headset.
+of shared RAM, and the local tier needs the model's VRAM (711 MB for Gemma 3
+1B, 376 MB for SmolLM2 360M) plus its weights in storage, Whisper and the
+voice model, on top of the browser and the VRM scene. That is plausible in the
+flat browser and risky inside an immersive session, which is why the model is
+resolved per session: an immersive session gets the 360M model. The API presets
+are the practical path on the headset.
+
+## The panel in VR and AR
+
+In the browser the panel is a screen-space overlay. Inside a session it
+becomes a world object again, and it is placed for the person wearing the
+headset: 1.15 m ahead, 0.42 m to the left and 0.18 m below the eyes, turned
+towards the user, at half the desktop scale. It is deliberately **beside** the
+centre of the view, because the centre belongs to the companion and to the
+teleport arc — a panel in the middle also made the controller ray "busy" over
+the panel, which suppressed the teleport. The distance is a compromise: closer
+than a metre put the panel's lower rows at the edge of the field of view, where
+the perspective piles the buttons on top of each other. The panel is
+`DistanceGrabbable`, so it can be grabbed and moved (and rotated) with a
+controller at any time.
+
+Two UIKit drawing details needed a fix for the panel to look solid. UIKit draws
+the panel in the transparent pass **without writing depth**, and the renderer
+sorts transparent objects near-to-far for UI readability, so the virtual floor
+grid was painted *over* the panel and it looked translucent from below. The
+panel's meshes are now assigned `renderOrder = 20`, which draws the whole panel
+after the scene's transparent objects while leaving its own layering intact
+(`WorkspaceSystem.update`). The body area also grows to fill the panel, so the
+bottom of the background is not an empty slab.
+
+The virtual plant belongs to the virtual room: in **MR** (passthrough) the real
+room is the environment, so the plant and the room shell are hidden there and
+shown again in VR and on the desktop. The plant is grabbable in VR.
+
+## Teleport and input
+
+- IWSDK aims the teleport arc with the **thumbstick pushed down**; the marker
+  appears where the controller points, which is the usual controller teleport.
+  The app adds the Quest-standard **trigger** as a second way to aim: hold the
+  trigger for the arc, release to teleport. Verified in the emulator: with the
+  trigger held the arc and the landing marker appear 3.1 m ahead, and on
+  release the player is moved exactly onto the marker.
+- Inside a session the **keyboard locomotion is disabled**. In the browser
+  emulator the arrow keys drive the emulated thumbsticks, so the keyboard
+  movement fought the XR movement: the same key that aimed a teleport also slid
+  the player off the floor.
+- The emulated stick and the framework disagree about the sign of the thumbstick
+  Y axis (`@iwsdk/xr-input` reads a positive Y as "Down"), which is why the
+  stick state has to be checked per device instead of assumed.
+
+## Character card: SillyTavern v3
+
+**Character → Export card** writes a `chara_card_v3` JSON file (and copies it to
+the clipboard): name, description, personality, scenario, greeting, example
+dialogue, system prompt, alternative greetings, tags and a small character
+book. **Import card** accepts that JSON — v3 (`data`) and the older flat v2
+layout — and fills the draft with the name and the character instructions.
+The bundled card is `public/character/ava.characterv3.json`, generated from the
+same source as the in-app export by `node tools/generate-character-card.mjs`,
+so the two can never drift apart. The card carries the persona; the 3D model,
+the voice and the providers stay in the app.
 
 ## Free OpenRouter preset: proof, not branding
 
@@ -193,11 +266,14 @@ XR means an immersive browser session. IWER is IWSDK's browser-based XR
 emulator: https://iwsdk.dev/guides/02-testing-experience.html#iwer-controls
 
 - Desktop: WASD/arrows move, Space jumps, right mouse looks; the configured
-  camera pose is preserved.
+  camera pose is preserved. Inside a session the keyboard locomotion is off, so
+  the emulator's arrow keys drive the emulated thumbsticks instead.
 - **Enter MR** starts `immersive-ar` (passthrough, hands/controllers, grabbing,
-  anchors, plane/mesh detection, hit-test). The virtual room hides.
-- **Enter VR** starts `immersive-vr` and shows the procedural virtual room.
-  State, avatar and conversation persist across mode switches.
+  anchors, plane/mesh detection, hit-test). The virtual room and the plant hide,
+  because the real room is the environment there.
+- **Enter VR** starts `immersive-vr` and shows the procedural virtual room with
+  the grabbable plant. State, avatar and conversation persist across mode
+  switches; the panel is re-placed for the user on every session start.
 
 ## Character and rendering
 
@@ -239,10 +315,18 @@ speech end-to-end, request composition for Gemma free (blocked upstream by
 shared-pool 429 at test time), explicit-photo privacy path, native Horizon
 controls with Cyrillic, and the encrypted QR receive flow (link re-entry, PIN
 capped at six digits, wrong-PIN error, successful apply). Added in the local
-tier: the WebLLM model downloads (537 MB), loads and answers in the emulator;
-the on-device Russian voice downloads, synthesises and plays with the speaking
-clip; the on-device Whisper model downloads; the browser/OS voice picker selects
-the female OS voice; the on-device Web Speech API reports the Russian pack as
-downloadable and starts installing it. Not verified: the headset itself, the
-Russian on-device recognition quality, and any speech content beyond the
-test sentences.
+tier: the WebLLM models download and answer in the emulator — Gemma 3 1B
+(537 MB, "Hello! It's a pleasure to meet you."), SmolLM2 360M (194 MB) and
+Qwen2.5 0.5B (265 MB, "Hello! How can I assist you today?"); the on-device
+Whisper model downloads; the browser/OS voice picker selects the female OS
+voice; the on-device Web Speech API reports the Russian pack as downloadable
+and starts installing it. Added in the immersive work: the panel is placed
+beside the user
+and turned towards them, the plant is hidden in MR and visible in VR, the
+keyboard no longer fights the XR locomotion, the trigger aims the teleport arc
+and the release teleports the player onto the marker. Added for the character:
+a `chara_card_v3` export and import, round-tripped through the panel. Fixed for
+the panel: it no longer looks translucent (the floor grid used to be drawn over
+it) and its body fills the panel instead of leaving an empty lower half. Not
+verified: the headset itself, the Russian on-device recognition quality, and
+any speech content beyond the test sentences.
