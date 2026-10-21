@@ -7,6 +7,9 @@
 
 import { World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
+// Must be imported before the UIKitML panel asset is loaded: it widens the
+// MSDF atlas charset so Cyrillic and underscores render instead of boxes.
+import './fonts.js';
 import { BrowserMouseLookSystem } from './mouselook.js';
 import { AvatarSystem } from './avatar.js';
 import { AmbientSystem } from './ambient.js';

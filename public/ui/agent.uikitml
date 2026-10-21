@@ -1,20 +1,22 @@
 <style>
-  @font-face { font-family: 'Workspace Sans'; src: url('../fonts/NotoSans-Regular.ttf'); font-weight: 400; }
-  @font-face { font-family: 'Workspace Sans'; src: url('../fonts/NotoSans-Bold.ttf'); font-weight: 700; }
-  .workspace { width: 100; height: 150; flex-direction: column; padding-top: 4; padding-bottom: 4; padding-left: 4; padding-right: 4; gap: 1.5; overflow: scroll; font-family: 'Workspace Sans'; font-weight: 400; color: #202124; border-radius: 12; }
-  .title { font-family: 'Workspace Sans'; height: 6; flex-shrink: 0; overflow: hidden; font-size: 4; font-weight: 700; color: #202124; }
-  .status { font-family: 'Workspace Sans'; height: 6; overflow: scroll; font-size: 2.4; line-height: 1.25; color: #4d5156; flex-shrink: 0; }
+  @font-face { font-family: 'Unbounded'; src: url('../fonts/Unbounded-Bold.ttf'); font-weight: 700; }
+  @font-face { font-family: 'Geologica'; src: url('../fonts/Geologica-Light.ttf'); font-weight: 300; }
+  @font-face { font-family: 'JetBrains Mono'; src: url('../fonts/JetBrainsMono-Regular.ttf'); font-weight: 400; }
+  .workspace { width: 100; height: 150; flex-direction: column; padding-top: 4; padding-bottom: 4; padding-left: 4; padding-right: 4; gap: 1.5; overflow: scroll; font-family: 'Geologica'; font-weight: 300; color: #202124; border-radius: 12; }
+  .title { font-family: 'Unbounded'; height: 7; flex-shrink: 0; overflow: hidden; font-size: 4.2; font-weight: 700; letter-spacing: 0.2; text-align: center; align-items: center; color: #202124; }
+  .status { font-family: 'JetBrains Mono'; height: 6; overflow: scroll; font-size: 2.4; line-height: 1.25; color: #4d5156; flex-shrink: 0; }
   .row { width: 92; flex-direction: row; gap: 1; flex-shrink: 0; }
-  .control { font-family: 'Workspace Sans'; flex-grow: 1; flex-basis: 0; min-width: 0; height: 7; padding-left: 1; padding-right: 1; }
-  .label { font-family: 'Workspace Sans'; font-weight: 400; font-size: 2.6; line-height: 1.2; height: 3.5; min-height: 0; pointer-events: none; white-space: pre; word-break: keep-all; }
-  .page { font-family: 'Workspace Sans'; width: 16; height: 7; flex-shrink: 0; justify-content: center; font-size: 2.4; line-height: 1.25; color: #4d5156; overflow: hidden; }
-  .body-wrap { width: 92; height: 34; min-height: 18; padding-top: 2; padding-bottom: 2; padding-left: 2; padding-right: 2; overflow: scroll; background-color: #f0f2f5; border-radius: 2; flex-shrink: 1; }
-  .body { font-family: 'Workspace Sans'; width: 88; font-size: 2.8; line-height: 1.35; color: #202124; }
-  .fields { width: 92; height: 48; min-height: 21; flex-direction: column; gap: 1; flex-shrink: 1; overflow: scroll; }
+  .control { font-family: 'JetBrains Mono'; flex-grow: 1; flex-basis: 0; min-width: 0; height: 7; padding-left: 1; padding-right: 1; }
+  .label { font-family: 'JetBrains Mono'; font-weight: 400; font-size: 2.6; line-height: 1.2; height: 3.5; min-height: 0; pointer-events: none; white-space: pre; word-break: keep-all; }
+  .page { font-family: 'JetBrains Mono'; width: 16; height: 7; flex-shrink: 0; justify-content: center; font-size: 2.4; line-height: 1.25; color: #4d5156; overflow: hidden; }
+  .body-wrap { width: 92; height: 34; min-height: 18; padding-top: 2; padding-bottom: 2; padding-left: 2; padding-right: 2; overflow: scroll; background-color: #f0f2f5; border-radius: 2; flex-shrink: 1; flex-direction: column; justify-content: flex-start; align-items: flex-start; }
+  .body { font-family: 'Geologica'; font-weight: 300; width: 88; font-size: 2.8; line-height: 1.35; color: #202124; white-space: pre-line; }
+  .mono { font-family: 'JetBrains Mono'; font-size: 2.6; line-height: 1.25; color: #202124; }
+  .fields { width: 92; max-height: 48; min-height: 7; flex-direction: column; gap: 1; flex-shrink: 0; overflow: scroll; }
   .field { width: 92; height: 7; min-height: 7; padding-left: 2; padding-right: 2; flex-shrink: 0; justify-content: flex-start; overflow: hidden; }
-  .field-label { font-family: 'Workspace Sans'; font-weight: 400; font-size: 2.6; line-height: 1.2; height: 3.5; min-height: 0; pointer-events: none; white-space: pre; word-break: keep-all; }
+  .field-label { font-family: 'JetBrains Mono'; font-weight: 400; font-size: 2.6; line-height: 1.2; height: 3.5; min-height: 0; pointer-events: none; white-space: pre; word-break: keep-all; }
   .qr { width: 35; height: 35; flex-shrink: 0; }
-  .feedback { font-family: 'Workspace Sans'; width: 92; height: 9; font-size: 2.5; line-height: 1.2; color: #174ea6; overflow: scroll; flex-shrink: 0; }
+  .feedback { font-family: 'Geologica'; font-weight: 300; width: 92; height: 9; font-size: 2.5; line-height: 1.2; color: #174ea6; overflow: scroll; flex-shrink: 0; }
   .editor { width: 92; flex-direction: column; gap: 1; padding-top: 1; padding-bottom: 1; background-color: #e8f0fe; flex-shrink: 0; }
 </style>
 <Panel id="workspace-root" class="workspace">
@@ -50,7 +52,7 @@
   </div>
   <div id="transfer-image" class="row">
     <img id="pairing-qr" class="qr" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" />
-    <div id="pairing-pin" class="body">Generate an encrypted QR link. PIN appears here.</div>
+    <div id="pairing-pin" class="mono">Generate an encrypted QR link. PIN appears here.</div>
   </div>
   <div id="chat-actions" class="row">
     <Button id="workspace-edit-chat" class="control"><ButtonLabel class="label">Write message</ButtonLabel></Button>
@@ -63,8 +65,12 @@
     <Button id="workspace-clear-key" class="control"><ButtonLabel class="label">Clear key</ButtonLabel></Button>
     <Button id="workspace-preset" class="control"><ButtonLabel class="label">Preset</ButtonLabel></Button>
   </div>
+  <div id="llm-presets" class="row">
+    <Button id="workspace-local-preset" class="control"><ButtonLabel class="label">Full local</ButtonLabel></Button>
+    <Button id="workspace-free-preset" class="control"><ButtonLabel class="label">Free APIs</ButtonLabel></Button>
+    <Button id="workspace-paid-preset" class="control"><ButtonLabel class="label">Paid APIs</ButtonLabel></Button>
+  </div>
   <div id="connection-actions" class="row">
-    <Button id="workspace-free-preset" class="control"><ButtonLabel class="label">OpenRouter free preset</ButtonLabel></Button>
     <Button id="workspace-copy-key" class="control"><ButtonLabel class="label">Copy LLM key to TTS</ButtonLabel></Button>
     <Button id="workspace-browser-voice" class="control"><ButtonLabel class="label">Next browser voice</ButtonLabel></Button>
   </div>

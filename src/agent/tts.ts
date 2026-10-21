@@ -8,6 +8,8 @@
 import { agentState } from './state.js';
 import { avatarBody } from '../avatar-body.js';
 import { publishAvatarCue } from './cues.js';
+import { synthesizeLocally } from './local-tts.js';
+import { describeVoice, listVoices, pickVoice } from './voices.js';
 import type { AvatarCue } from './contracts.js';
 
 let status = 'Speech disabled';
@@ -91,36 +93,19 @@ export function speak(text: string, cue: AvatarCue | null = null): Promise<void>
           throw new Error('Browser speech synthesis is unavailable; select another provider');
         }
         const synthesis = window.speechSynthesis;
-        let voices = synthesis.getVoices();
-        if (!voices.length) {
-          notify('Speech: loading browser voices');
-          if (finished) return;
-          await new Promise<void>((done) => {
-            const complete = () => {
-              clearTimeout(timer);
-              synthesis.removeEventListener('voiceschanged', complete);
-              done();
-            };
-            const timer = setTimeout(complete, 1500);
-            synthesis.addEventListener('voiceschanged', complete);
-            cleanups.push(complete);
-          });
-          if (finished) return;
-          voices = synthesis.getVoices();
-        }
+        const voices = await listVoices();
         if (!voices.length) throw new Error('No browser speech voices are available');
         const selected = settings.ttsVoice.trim();
         const voice = selected
-          ? voices.find((item) => item.voiceURI === selected || item.name === selected)
-          : voices.find((item) => item.lang.toLowerCase() === settings.speechLanguage.toLowerCase()) ??
-            voices.find((item) => item.lang.split('-')[0]?.toLowerCase() === settings.speechLanguage.split('-')[0]?.toLowerCase()) ??
-            voices.find((item) => item.default) ?? voices[0];
+          ? voices.find((item) => item.uri === selected || item.name === selected) ?? null
+          : pickVoice(voices, settings.speechLanguage);
         if (!voice) throw new Error('Selected browser voice is unavailable; select an installed voice or leave voice empty');
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.voice = voice;
+        utterance.voice = synthesis.getVoices().find((item) => item.voiceURI === voice.uri) ?? null;
         utterance.lang = settings.speechLanguage;
         utterance.rate = 1.05;
-        utterance.onstart = () => { if (!finished) { startPerformance(true); notify('Speech: speaking (browser)'); } };
+        const voiceLabel = describeVoice(voice);
+        utterance.onstart = () => { if (!finished) { startPerformance(true); notify(`Speech: speaking (${voiceLabel})`); } };
         utterance.onend = () => finish('Speech complete');
         utterance.onerror = (event) => finish('', new Error(`Browser synthesis failed (${event.error})`));
         cleanups.push(() => {
@@ -131,6 +116,42 @@ export function speak(text: string, cue: AvatarCue | null = null): Promise<void>
         });
         notify('Speech: queued (browser)');
         if (!finished) synthesis.speak(utterance);
+        return;
+      }
+
+      if (settings.ttsProvider === 'local') {
+        if (!settings.ttsModel.trim()) throw new Error('Set an on-device voice model, for example Xenova/mms-tts-rus');
+        if (typeof AudioContext === 'undefined') throw new Error('Audio playback is unavailable in this runtime');
+        notify('Speech: generating audio on device');
+        if (finished) return;
+        const { audio, samplingRate } = await synthesizeLocally(
+          text,
+          settings.ttsModel.trim(),
+          (status) => { if (!finished) notify(status); },
+        );
+        if (finished) return;
+        const context = new AudioContext();
+        const buffer = context.createBuffer(1, audio.length, samplingRate);
+        const samples = new Float32Array(audio.length);
+        samples.set(audio);
+        buffer.copyToChannel(samples, 0);
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.connect(context.destination);
+        const ended = new Promise<void>((resolve) => { source.onended = () => resolve(); });
+        cleanups.push(() => {
+          source.onended = null;
+          try { source.stop(); } catch { /* already stopped */ }
+          void context.close().catch(() => { /* already closed */ });
+        });
+        await context.resume().catch(() => { /* autoplay may block until a gesture */ });
+        if (finished) return;
+        startPerformance(true);
+        notify('Speech: speaking (on device)');
+        avatarBody.speakChunk(text);
+        source.start();
+        await ended;
+        finish('Speech complete');
         return;
       }
 

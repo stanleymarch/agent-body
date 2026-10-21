@@ -1,8 +1,10 @@
 import { createSystem, ScreenSpace, SessionMode, UIKitMLAsset, Visibility, VisibilityState } from '@iwsdk/core';
 import qrcode from 'qrcode-generator';
 import { agentState } from './agent/state.js';
-import { OPENROUTER_FREE_PRESET } from './agent/settings.js';
+import { FREE_PRESET, LOCAL_PRESET, PAID_PRESET, isLocalLlmEndpoint } from './agent/settings.js';
 import { agentBrain } from './agent/brain.js';
+import { getLocalLlmStatus, onLocalLlmStatus } from './agent/local-llm.js';
+import { describeVoice, listVoices, voiceCycle } from './agent/voices.js';
 import type { AgentSettings, MemoryRecord } from './agent/contracts.js';
 import { speak, hush, getSpeechStatus, onSpeechStatus } from './agent/tts.js';
 import { startListening, cancelListening, type ListeningSession } from './agent/stt.js';
@@ -10,7 +12,7 @@ import { getCharacterStatus, onCharacterStatus, BUNDLED_CHARACTER_PRESET } from 
 import { getAvatarCue, onAvatarCue } from './agent/cues.js';
 import { getPerceptionStatus, onPerceptionStatus, getRoomSummary } from './agent/perception.js';
 import { createPairingOffer, consumePairingUrl, parsePairingFragment, type PairingOffer } from './pairing.js';
-import { CHARACTER_FIELDS, CONNECTION_FIELDS, PROVIDER_LABELS, type SettingField, type WorkspaceTab, type ConnectionTab } from './workspace-fields.js';
+import { CHARACTER_FIELDS, CONNECTION_FIELDS, providerLabel, type SettingField, type WorkspaceTab, type ConnectionTab } from './workspace-fields.js';
 import './workspace.css';
 
 const TAB_LABELS: Record<WorkspaceTab, string> = { chat: 'Dialogue', character: 'Character', connections: 'Connections', memory: 'Memory' };
@@ -56,6 +58,7 @@ export class WorkspaceSystem extends createSystem({}) {
     let supportsVR = false;
     let cue = getAvatarCue();
     let cameraStatus = getPerceptionStatus();
+    let localStatus = getLocalLlmStatus();
 
     // Native editing only: no duplicate DOM navigation, settings or business UI.
     // A focused DOM input is also the documented Quest system-keyboard bridge.
@@ -78,7 +81,23 @@ export class WorkspaceSystem extends createSystem({}) {
     bridge.append(bridgeLabel, textInput, secretInput);
     document.body.append(bridge);
     let input: HTMLTextAreaElement | HTMLInputElement = textInput;
-    const setText = (id: string, text: string): void => { panel.requireElementById(id).setProperties({ text }); };
+    const setText = (id: string, text: string): void => {
+      const element = panel.requireElementById(id) as unknown as {
+        setProperties: (properties: Record<string, unknown>) => void;
+        children?: { setProperties: (properties: Record<string, unknown>) => void }[];
+      };
+      element.setProperties({ text });
+      // UIKit renders a Container's text through a child _Text with its own
+      // style, so text rules on the Container alone do not reach the glyphs.
+      const childStyle: Record<string, Record<string, unknown>> = {
+        'workspace-body': { whiteSpace: 'pre-line' },
+        'workspace-title': { textAlign: 'center' },
+      };
+      const style = childStyle[id];
+      if (style) {
+        for (const child of element.children ?? []) child.setProperties(style);
+      }
+    };
     const show = (id: string, visible: boolean): void => { panel.requireElementById(id).setProperties({ display: visible ? 'flex' : 'none' }); };
     // Horizon buttons paint their own hover/pressed theme layers above inline
     // colours, so a clicked chip would keep the dark pressed fill. Resolve the
@@ -106,6 +125,7 @@ export class WorkspaceSystem extends createSystem({}) {
       const provider = draft[sub === 'stt' ? 'sttProvider' : 'ttsProvider'];
       return fields.filter((field) => field.kind === 'provider' ||
         (provider !== 'off' && field.key === 'speechLanguage') ||
+        (provider === 'local' && (field.key === 'sttModel' || field.key === 'ttsModel')) ||
         (provider === 'browser' && field.key === 'ttsVoice') || provider === 'openai');
     };
     const visibleRecords = (): MemoryRecord[] => records.filter((record) => tab === 'chat' ? record.kind === 'chat' : record.kind !== 'chat');
@@ -122,7 +142,9 @@ export class WorkspaceSystem extends createSystem({}) {
       const history = tab === 'chat' || tab === 'memory';
       setText('workspace-title', `${settings.agentName} / ${TAB_LABELS[tab]}`);
       const motion = cue && (cue.emotion !== 'neutral' || cue.gesture !== 'none') ? ` / ${cue.emotion} / ${cue.gesture}` : '';
-      setText('workspace-status', `${Object.keys(pending).length ? 'Unsaved changes / ' : ''}${agentBrain.mode === 'live' ? `LLM: ${settings.modelId}` : 'Offline demo / no authenticated LLM'}${motion}`);
+      const local = isLocalLlmEndpoint(settings.modelEndpoint);
+      const localProgress = local && localStatus ? ` / ${localStatus}` : '';
+      setText('workspace-status', `${Object.keys(pending).length ? 'Unsaved changes / ' : ''}${agentBrain.mode === 'live' ? `LLM: ${settings.modelId}${local ? ' (local WebGPU)' : ''}` : 'Offline demo / no authenticated LLM'}${localProgress}${motion}`);
       for (const key of Object.keys(TAB_LABELS) as WorkspaceTab[]) tintChip(`nav-${key}`, tab === key ? '#d2e3fc' : '#f1f3f4');
       for (const key of Object.keys(SUB_LABELS) as ConnectionTab[]) tintChip(`sub-${key}`, sub === key ? '#d2e3fc' : '#f1f3f4');
       show('connection-tabs', connection);
@@ -143,7 +165,7 @@ export class WorkspaceSystem extends createSystem({}) {
       } else if (transfer) {
         body = receivingUrl ? 'Encrypted settings received. Enter the 6-digit PIN from the sending device, then Apply settings. The link expires after 10 minutes. Skip discards this link without changing your settings.' : 'Encrypted settings transfer. Save settings first, generate a QR, then scan/open its link on the receiver and enter the PIN. QR + PIN together are secret. Expires after 10 minutes. No memory or dialogue is transferred.';
       } else {
-        body = sub === 'llm' ? 'Independent LLM endpoint, model and key. Free preset selects NVIDIA Nemotron 3 Nano Omni free on OpenRouter via the shared pool (verified here with text + image vision). Gemma 4 31B free exists, but returned pooled-provider 429s during verification. The multi-tool model id still resolves through OpenRouter; your key is never bundled.' : sub === 'stt' ? 'Independent speech recognition. Browser engine requires runtime support; OpenAI-compatible STT records only while active. Test records and displays a transcript without sending it to the LLM.' : 'Independent speech output. Browser voices depend on this runtime. Fish free preset uses the OpenAI-compatible audio/speech endpoint. Copy LLM key to TTS is an explicit separate action.';
+        body = sub === 'llm' ? 'Presets fill this draft; Save applies them. Full local runs Gemma 3 1B through WebGPU with on-device Whisper and an on-device voice: no key, no audio and no text leaves the device. Free APIs uses OpenRouter Nemotron free with the free browser/OS speech of this machine. Paid APIs uses Gemma 4 31B and asks OpenRouter to sort providers by price. API keys are never copied or cleared by a preset and are never bundled.' : sub === 'stt' ? 'Independent speech recognition. The browser engine is free: with the on-device speech pack it never uploads audio, otherwise the browser vendor recognises it in the cloud. On-device Whisper runs through WebGPU, downloads once, and never uploads audio. OpenAI-compatible STT records only while active. Test records and displays a transcript without sending it to the LLM.' : 'Independent speech output. The on-device voice (MMS TTS) runs locally and never sends the text anywhere. Browser voices are the free OS voices of this machine; a female voice is picked first and Next voice cycles them. The Fish free preset uses the OpenAI-compatible audio/speech endpoint instead. Copy LLM key to TTS is an explicit separate action.';
       }
       setText('workspace-body', body);
       show('record-navigation', history && !editing);
@@ -153,7 +175,7 @@ export class WorkspaceSystem extends createSystem({}) {
         show(`field-${index}`, Boolean(field));
         if (!field) continue;
         const value = draft[field.key];
-        const label = field.kind === 'secret' ? value ? 'Stored (hidden); blank retains' : 'Not set' : field.kind === 'toggle' ? value ? 'On' : 'Off' : field.kind === 'provider' ? PROVIDER_LABELS[String(value)] : String(value || 'Not set');
+        const label = field.kind === 'secret' ? value ? 'Stored (hidden); blank retains' : 'Not set' : field.kind === 'toggle' ? value ? 'On' : 'Off' : field.kind === 'provider' ? providerLabel(field.key, value) : String(value || 'Not set');
         const text = `${field.label}: ${label}`;
         // Field rows are one line high: truncate the assembled label (prefix
         // included) so it cannot wrap into a second, clipped line.
@@ -165,8 +187,8 @@ export class WorkspaceSystem extends createSystem({}) {
       setText('workspace-test-label', sub === 'stt' && capture ? 'Stop test' : `Test ${sub.toUpperCase()}`);
       show('workspace-clear-key', fields.some((field) => field.kind === 'secret'));
       show('workspace-preset', character);
-      show('connection-actions', connection && !transfer && !editing && (sub === 'llm' || sub === 'tts'));
-      show('workspace-free-preset', sub === 'llm');
+      show('llm-presets', connection && sub === 'llm' && !editing);
+      show('connection-actions', connection && !transfer && !editing && sub === 'tts');
       show('workspace-copy-key', sub === 'tts');
       show('workspace-browser-voice', sub === 'tts' && draft.ttsProvider === 'browser');
       show('memory-actions', tab === 'memory' && !editing);
@@ -182,6 +204,10 @@ export class WorkspaceSystem extends createSystem({}) {
       show('workspace-enter-vr', !world.session && supportsVR);
       show('workspace-exit', Boolean(world.session));
     };
+    disposers.push(onLocalLlmStatus((next) => {
+      localStatus = next;
+      if (!disposed) render();
+    }));
     const save = async (): Promise<boolean> => {
       try {
         const patch = { ...pending };
@@ -258,7 +284,7 @@ export class WorkspaceSystem extends createSystem({}) {
       if (editing) return;
       if (typeof target === 'object' && target.kind === 'toggle') { changeDraft({ [target.key]: !draft[target.key] }); render(); return; }
       if (typeof target === 'object' && target.kind === 'provider') {
-        const values = ['off', 'browser', 'openai'];
+        const values = ['off', 'browser', 'local', 'openai'];
         const next = values[(values.indexOf(String(draft[target.key])) + 1) % values.length];
         changeDraft({ [target.key]: next });
         if (target.key === 'ttsProvider' && next === 'browser') changeDraft({ ttsVoice: '' });
@@ -306,7 +332,7 @@ export class WorkspaceSystem extends createSystem({}) {
       void save().then((saved) => {
         if (!saved || disposed) return;
         if (provider === 'llm') {
-          if (agentBrain.mode !== 'live') { feedback('No live LLM configured. Set an endpoint, model and key before testing.', true); return; }
+          if (agentBrain.mode !== 'live') { feedback('No live LLM configured. Choose Full local or set an endpoint, model and key before testing.', true); return; }
           submit('Connection test: please reply with a short greeting.');
         } else if (provider === 'stt') microphone(true);
         else if (provider === 'tts') void speak('Hello. This is a test of your selected voice provider.').catch(reportError);
@@ -318,9 +344,20 @@ export class WorkspaceSystem extends createSystem({}) {
       if (field) { changeDraft({ [field.key]: '' }); feedback('Key explicitly removed from draft. Save to apply.'); render(); }
     });
     action('workspace-preset', () => { changeDraft({ characterVrmUrl: '', characterScale: 1 }); feedback('Bundled character selected in draft. Save to apply.'); render(); });
+    action('workspace-local-preset', () => {
+      changeDraft(LOCAL_PRESET);
+      feedback('Full-local draft: Gemma 3 1B via WebGPU, on-device Whisper, on-device voice. First use downloads all three models; no API key and no data leaves the device. Save to apply.');
+      render();
+    });
     action('workspace-free-preset', () => {
-      changeDraft(OPENROUTER_FREE_PRESET);
-      feedback('Free model/voice preset in draft. LLM and TTS keys remain separate and unchanged. Save to apply.'); render();
+      changeDraft(FREE_PRESET);
+      feedback('Free-API draft: OpenRouter Nemotron free, browser/OS voice and browser speech recognition (on-device pack when the browser has it). Only the LLM needs a key. Save to apply.');
+      render();
+    });
+    action('workspace-paid-preset', () => {
+      changeDraft(PAID_PRESET);
+      feedback('Paid-API draft: Gemma 4 31B with cheapest healthy provider first, Fish free voice, browser STT. Keys are unchanged; add an OpenRouter key. Save to apply.');
+      render();
     });
     action('workspace-copy-key', () => {
       if (!draft.modelApiKey) { feedback('Set an LLM key first. The TTS key was not changed.', true); return; }
@@ -328,13 +365,16 @@ export class WorkspaceSystem extends createSystem({}) {
       feedback('LLM key explicitly copied to TTS draft. Save to apply.'); render();
     });
     action('workspace-browser-voice', () => {
-      const voices = window.speechSynthesis?.getVoices() ?? [];
-      if (!voices.length) { feedback('This runtime exposes no browser voices. Try again after voices load, or choose a speech provider.', true); return; }
-      const index = voices.findIndex((voice) => voice.voiceURI === draft.ttsVoice);
-      const voice = voices[(index + 1) % voices.length];
-      if (!voice) return;
-      changeDraft({ ttsVoice: voice.voiceURI });
-      feedback(`Browser voice: ${voice.name} / ${voice.lang}. Save to apply.`); render();
+      void listVoices().then((voices) => {
+        if (disposed) return;
+        if (!voices.length) { feedback('This runtime exposes no browser voices. Try again after voices load, or choose another speech provider.', true); render(); return; }
+        const ordered = voiceCycle(voices, draft.speechLanguage, draft.ttsVoice);
+        const voice = ordered[0];
+        if (!voice) return;
+        changeDraft({ ttsVoice: voice.uri });
+        feedback(`Voice: ${describeVoice(voice)}. Female voices come first. Save to apply.`);
+        render();
+      });
     });
     action('workspace-memory-add', () => edit('note'));
     action('workspace-memory-search', () => edit('search'));
@@ -363,7 +403,7 @@ export class WorkspaceSystem extends createSystem({}) {
         const qr = qrcode(0, 'M'); qr.addData(offer.url); qr.make();
         panel.requireElementById('pairing-qr').setProperties({ src: qr.createDataURL(5, 20) });
         clearTimeout(pairingTimer);
-        pairingTimer = setTimeout(() => {
+        pairingTimer = window.setTimeout(() => {
           pairing = null;
           setText('pairing-pin', '');
           panel.requireElementById('pairing-qr').setProperties({ src: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==' });

@@ -6,6 +6,7 @@
  */
 
 import { agentState } from './state.js';
+import { transcribeLocally } from './local-stt.js';
 
 // SpeechRecognition is not part of every browser's DOM declarations or runtime.
 interface RecognitionResult {
@@ -21,6 +22,8 @@ interface Recognition {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
+  /** Chrome 139+: keep the audio on the device. */
+  processLocally?: boolean;
   onstart: (() => void) | null;
   onend: (() => void) | null;
   onerror: ((event: { error: string }) => void) | null;
@@ -29,9 +32,18 @@ interface Recognition {
   stop(): void;
   abort(): void;
 }
+interface RecognitionAvailability {
+  langs: string[];
+  processLocally: boolean;
+}
+interface RecognitionConstructor {
+  new (): Recognition;
+  available?(options: RecognitionAvailability): Promise<string>;
+  install?(options: RecognitionAvailability): Promise<boolean>;
+}
 interface RecognitionWindow extends Window {
-  SpeechRecognition?: new () => Recognition;
-  webkitSpeechRecognition?: new () => Recognition;
+  SpeechRecognition?: RecognitionConstructor;
+  webkitSpeechRecognition?: RecognitionConstructor;
 }
 
 export interface ListeningSession {
@@ -140,16 +152,30 @@ export async function startListening(
       const host = typeof window === 'undefined' ? undefined : window as RecognitionWindow;
       const Constructor = host?.SpeechRecognition ?? host?.webkitSpeechRecognition;
       if (!Constructor) {
-        throw new Error('Browser speech recognition is unavailable; select OpenAI-compatible STT');
+        throw new Error('Browser speech recognition is unavailable; select on-device Whisper or OpenAI-compatible STT');
       }
       const browserRecognition = new Constructor();
       recognition = browserRecognition;
       browserRecognition.lang = settings.speechLanguage;
       browserRecognition.continuous = false;
       browserRecognition.interimResults = false;
+      // Chrome 139+ can recognise speech on the device. Without the language
+      // pack the browser falls back to the vendor's cloud recognition.
+      let onDevice = false;
+      if (typeof Constructor.available === 'function') {
+        const options = { langs: [settings.speechLanguage], processLocally: true };
+        const availability = await Constructor.available(options).catch(() => 'unavailable');
+        if (availability === 'available') onDevice = true;
+        else if (availability === 'downloadable' && typeof Constructor.install === 'function') {
+          onStatus('Microphone: installing the on-device speech pack (one-time download)');
+          onDevice = await Constructor.install(options).catch(() => false);
+        }
+      }
+      if (onDevice && 'processLocally' in browserRecognition) browserRecognition.processLocally = true;
+      const engine = onDevice ? 'browser, on-device' : 'browser, cloud';
       const finalResults: string[] = [];
       browserRecognition.onstart = () => {
-        if (!closed) onStatus('Microphone: listening (browser)');
+        if (!closed) onStatus(`Microphone: listening (${engine})`);
       };
       browserRecognition.onresult = (event) => {
         if (closed) return;
@@ -168,12 +194,16 @@ export async function startListening(
         // onStatus may have started a newer session during close().
         if (text && !canceled && generation === ownGeneration) onTranscript(text);
       };
-      onStatus('Microphone: starting browser recognition');
+      onStatus(`Microphone: starting ${engine} recognition`);
       if (!closed) browserRecognition.start();
       return session;
     }
 
-    if (!settings.sttEndpoint.trim() || !settings.sttModel.trim()) {
+    const onDevice = settings.sttProvider === 'local';
+    if (onDevice && !settings.sttModel.trim()) {
+      throw new Error('Set an on-device Whisper model id, for example onnx-community/whisper-base');
+    }
+    if (!onDevice && (!settings.sttEndpoint.trim() || !settings.sttModel.trim())) {
       throw new Error('Set the transcription endpoint and model for OpenAI-compatible STT');
     }
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -214,6 +244,19 @@ export async function startListening(
       const audio = new Blob(chunks, { type });
       if (!audio.size) {
         close('Microphone error: recording was empty');
+        return;
+      }
+      if (onDevice) {
+        let text = '';
+        try {
+          text = await transcribeLocally(audio, settings.sttModel, settings.speechLanguage, controller.signal, onStatus);
+        } catch (error) {
+          if (!closed) close(`Microphone error: ${error instanceof Error ? error.message : 'on-device transcription failed'}`);
+          return;
+        }
+        if (closed) return;
+        close(text ? 'Transcription complete' : 'No speech recognized');
+        if (text && !canceled && generation === ownGeneration) onTranscript(text);
         return;
       }
       const extension = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : type.includes('webm') ? 'webm' : 'bin';

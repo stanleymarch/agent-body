@@ -50,6 +50,7 @@ import type {
 } from './agent/contracts.js';
 import { agentState } from './agent/state.js';
 import { setCharacterStatus } from './agent/character.js';
+import { publishAvatarCue } from './agent/cues.js';
 
 /** Mouth expressions cycled by the talking oscillator, in order. */
 const TALK_MOUTH: AvatarExpressionName[] = ['aa', 'ih', 'ou', 'ee'];
@@ -498,6 +499,9 @@ export class AvatarSystem extends createSystem({}) {
       }
       if (this.cueElapsed >= this.cueTotal) {
         this.clearCue();
+        // The panel status reports the active cue; let it drop the suffix when
+        // the performance has actually finished.
+        publishAvatarCue(null);
       }
     }
 

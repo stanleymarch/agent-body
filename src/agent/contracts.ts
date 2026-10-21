@@ -43,12 +43,12 @@ export interface AgentSettings {
   characterPrompt: string;
   characterScale: number;
   speechLanguage: string;
-  ttsProvider: 'off' | 'browser' | 'openai';
+  ttsProvider: 'off' | 'browser' | 'local' | 'openai';
   ttsEndpoint: string;
   ttsModel: string;
   ttsVoice: string;
   ttsApiKey: string;
-  sttProvider: 'off' | 'browser' | 'openai';
+  sttProvider: 'off' | 'browser' | 'local' | 'openai';
   sttEndpoint: string;
   sttModel: string;
   sttApiKey: string;

@@ -29,6 +29,9 @@ export const AVATAR_ANIMATIONS = {
 } as const;
 
 type AnimationId = keyof typeof AVATAR_ANIMATIONS;
+/** Clips whose limb tracks must not drive this avatar's arms/legs. */
+const TORSO_ONLY: ReadonlySet<AnimationId> = new Set<AnimationId>(['nod', 'think']);
+const TORSO_BONES = /(?:Hips|Spine|Chest|Neck|Head)/u;
 type RestBone = {
   node: Object3D;
   position: Object3D['position'];
@@ -107,7 +110,13 @@ export class AvatarAnimationPlayer {
     for (const [id, motion] of motions) {
       const clip = createVRMAnimationClip(motion, vrm);
       clip.name = AVATAR_ANIMATIONS[id].name;
-      clip.tracks = clip.tracks.filter((track) => bodyBindings.has(track.name));
+      clip.tracks = clip.tracks.filter((track) => {
+        if (!bodyBindings.has(track.name)) return false;
+        // The Companion Space clips carry raw arm/leg tracks that do not
+        // retarget to this VRM: nod and think raised both arms above the head.
+        // Keep their head/torso motion and leave the limbs at the rest pose.
+        return !TORSO_ONLY.has(id) || TORSO_BONES.test(track.name.split('.')[0]!);
+      });
       if (clip.tracks.length === 0) continue;
       this.actions.set(id, this.mixer.clipAction(clip));
     }

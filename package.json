@@ -16,7 +16,9 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.71",
+    "@huggingface/transformers": "^4.3.1",
     "@iwsdk/core": "1.0.1",
+    "@mlc-ai/web-llm": "^0.2.86",
     "@pixiv/three-vrm": "^3.5.5",
     "@pixiv/three-vrm-animation": "^3.5.5",
     "@pmndrs/uikit": "^1.0.74",

@@ -28,14 +28,114 @@ Tabs: **Dialogue** (message, microphone, explicit Look/camera), **Character**
 (bundled preset, custom VRM URL, prompt, scale, idle, gaze), **Connections**
 (independent LLM/STT/TTS + encrypted QR transfer), **Memory** (notes, facts,
 search, confirmed clear). Enter MR / Enter VR / Return to browser are the same
-panel. Cyrillic text renders through bundled Noto Sans (SIL OFL 1.1,
-`public/fonts/OFL.txt`; source: `notofonts/noto-fonts`).
+panel.
 
 `window.__agentBody` exists only in development builds.
 
+## Brand type: Unbounded, Geologica, JetBrains Mono
+
+| Role | Family | File |
+| --- | --- | --- |
+| Headings (panel title) | Unbounded 700 | `public/fonts/Unbounded-Bold.ttf` |
+| Body text, feedback | Geologica 300 | `public/fonts/Geologica-Light.ttf` |
+| Buttons, labels, status, fields | JetBrains Mono 400 | `public/fonts/JetBrainsMono-Regular.ttf` |
+
+All three are SIL OFL 1.1 (`public/fonts/OFL-*.txt`) and carry Cyrillic, so the
+Russian and the English interface both render.
+
+UIKit builds a single-channel MSDF atlas per font and, by default, only for a
+fixed ASCII charset **without `_`**. Everything else was drawn as a missing
+glyph, which is why Cyrillic and underscores used to appear as boxes.
+`src/fonts.ts` widens that charset to the intersection of the three brand fonts
+(Latin, Latin-1, Cyrillic, typographic punctuation — 309 characters) and
+serialises atlas generation, because concurrent MSDF workers produce incomplete
+atlases. `tools/font-charset.mjs` regenerates `src/fonts-charset.ts`; run it
+after changing the font files.
+
+Two more UIKit quirks are handled in `src/workspace.ts`: a `Container` renders
+its text through a child `_Text` with its own style, so `white-space` and
+`text-align` are pushed onto that child, and the panel body uses `pre-line` so
+multi-line chat records keep their line breaks.
+
+## Three presets: full local, free, paid
+
+**Connections / LLM** has three buttons. They fill the draft only — Save
+applies them, and no preset ever copies, clears or bundles a key.
+
+| Preset | Model | Speech in | Speech out | Key |
+| --- | --- | --- | --- | --- |
+| **Full local** | Gemma 3 1B (WebLLM, WebGPU) | on-device Whisper | on-device MMS-TTS (Russian) | none |
+| **Free APIs** | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | browser/OS | browser/OS | OpenRouter key only |
+| **Paid APIs** | `google/gemma-4-31b-it`, OpenRouter sorts providers by price | browser/OS | browser/OS | OpenRouter key |
+
+The paid preset asks OpenRouter for `provider: { sort: 'price' }`, so the
+cheapest healthy provider wins with the rest kept as fallbacks (CoreWeave was
+cheapest during verification: $0.10/M in, $0.34/M out). Free shared-pool models
+rate-limit at any time; 429s are reported, never answered by invention.
+
+### Full local: what actually runs
+
+- **LLM** — `@mlc-ai/web-llm` in a module worker: `gemma3-1b-it-q4f16_1-MLC`,
+  ~537 MB of weights, ~711 MB VRAM. Two WebLLM quirks are patched in
+  `src/agent/local-llm.ts`: the model is cached in IndexedDB (the Cache API
+  rejects Hugging Face's Xet CDN responses), and Gemma 3 needs
+  `context_window_size: -1` plus `attention_sink_size: 0` because it uses a
+  sliding window. Verified end-to-end on the emulator: the weights download, the
+  model loads and answers ("Hello! It's a pleasure to meet you.").
+  The local path is text-only — a 1B model has no image input, so an explicit
+  "look at this" is refused with a message instead of a fake description — and
+  it has no reliable tool calling, so the avatar stays neutral there.
+- **STT** — `onnx-community/whisper-base` through `@huggingface/transformers`
+  (WebGPU, fp32 encoder / q4 decoder). The recording is decoded and resampled
+  to 16 kHz mono in the page; audio never leaves the device.
+- **TTS** — `Xenova/mms-tts-rus` (VITS, byte-level tokenizer, so no espeak
+  phonemizer is needed and Russian works out of the box) through the same
+  transformers.js runtime, played with Web Audio. Verified: the voice model
+  downloads, the audio plays, and the avatar plays its speaking clip with
+  visemes while the audio runs.
+
+### Browser/OS speech: the free tier
+
+The **browser** provider is the cheapest option and needs no key at all.
+
+- **TTS** — `speechSynthesis` exposes the voices installed in the operating
+  system. On the test machine that is Microsoft Zira, David and Mark, all with
+  `localService === true` (OS voices, not network voices). The default OS voice
+  is male, so `src/agent/voices.ts` picks a female-sounding voice for the
+  current language first and the panel reports what it chose
+  ("Microsoft Zira … OS voice, female"). "Next voice" cycles female voices
+  first. Voice names are matched against a curated list; the Web Speech API has
+  no gender field.
+- **STT** — Chrome 139+ exposes the on-device Web Speech API
+  (`SpeechRecognition.available({ langs, processLocally: true })` and
+  `install()`), and `ru-RU` is on the supported list. The app checks
+  availability, installs the language pack on first use ("Microphone:
+  installing the on-device speech pack") and then sets `processLocally = true`,
+  so the audio stays on the device. Without the pack the browser falls back to
+  the vendor's cloud recognition, and the status says so ("browser, cloud").
+
+### Quest 3 reality check
+
+Not verified on hardware. What the facts say: Meta ships WebGPU in the Horizon
+browser as **experimental** (and in WebXR), so the full-local tier may not be
+available in the headset browser at all; the app detects that and reports
+"Full local mode needs WebGPU…" instead of failing silently. Quest 3 has 8 GB
+of shared RAM, and the local tier needs ~0.7 GB of VRAM for the model, ~0.5 GB
+of weights in storage plus Whisper and the voice model, on top of the browser
+and the VRM scene. That is plausible in the flat browser and risky inside an
+immersive session. The API presets are the practical path on the headset.
+
 ## Free OpenRouter preset: proof, not branding
 
-The default and the **OpenRouter free preset** LLM is `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` on `https://openrouter.ai/api/v1` because that exact model answered a labelled image fixture end-to-end (the known caption `BLUE KEY 42` was read correctly from a real JPEG in the real multimodal request, with exactly one request upload). Gemma 4 31B free is still listed as a selectable model id, but it returned shared-pool upstream `429`s for every text and image request during this verification window, so it cannot be the working default. Fish `s2.1-pro-free:free` speech is proven through real `/audio/speech` MP3 bytes; it needs its own explicit key copy after the preset. No key is bundled. Shared-pool free models can rate-limit at any time; provider errors are reported, never answered by invention.
+The **Free APIs** preset LLM is `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`
+on `https://openrouter.ai/api/v1` because that exact model answered a labelled
+image fixture end-to-end (the known caption `BLUE KEY 42` was read correctly
+from a real JPEG in the real multimodal request, with exactly one request
+upload). Gemma 4 31B free is still listed as a selectable model id, but it
+returned shared-pool upstream `429`s for every text and image request during
+that verification window. Fish `s2.1-pro-free:free` speech is proven through
+real `/audio/speech` MP3 bytes; it needs its own explicit key copy after the
+preset. No key is bundled.
 
 The avatar performs alongside replies through an **optional typed tool**, not
 inline text tags. The live system prompt offers `avatar_perform(emotion,
@@ -50,8 +150,9 @@ guard against factual errors in the model's answer.
 - Gestures are backed by **real CC0 VRMA clips** where honestly covered
   (`public/animations/ATTRIBUTION.txt` pins sources, licenses and SHA-256):
   idle, speaking, listening-nod, thinking, kneeling apology (bow),
-  encouragement (happy), startled (surprised). Wave and shake remain procedural
-
+  encouragement (happy), startled (surprised). Wave and shake remain procedural.
+  The `nod` and `think` clips are restricted to the head and torso tracks:
+  their limb tracks raised both arms above the head.
 - Clips restore the exact captured normalized-skeleton rest pose on completion,
   cancellation, and avatar replacement. A missing or failed clip falls back to
   procedural motion and logs it in development.
@@ -80,13 +181,11 @@ guard against factual errors in the model's answer.
 
 Independent LLM, STT and TTS providers, endpoints, models and keys. Secrets are
 never rendered back; blank retains, Clear removes, and the LLM key is copied to
-TTS only by an explicit button. **OpenRouter free preset** fills
-`google/gemma-4-31b-it:free` (text+image input, no audio input) and
-`fish-audio/s2.1-pro-free:free` speech (`mp3`), but no credentials: enter your
-own key. Free endpoints are shared-pool rate-limited — 429s happen and the app
-reports them instead of falling back to a paid model or a fake reply.
-Browser speech recognition/synthesis depend on runtime support. STT records
-only while active; stopping releases tracks and aborts transcription.
+TTS only by an explicit button. The three presets above fill the draft without
+touching the keys. Free endpoints are shared-pool rate-limited — 429s happen
+and the app reports them instead of falling back to a paid model or a fake
+reply. Browser speech recognition/synthesis depend on runtime support. STT
+records only while active; stopping releases tracks and aborts transcription.
 
 ## Desktop, MR and VR
 
@@ -113,8 +212,8 @@ redistribution/modification and personal non-profit use. Its presence is not
 proof of redistribution permission; verify before further public redistribution
 or commercial use. VRMA clips are CC0 (see `public/animations/`); the Sansevieria
 plant is MIT from `@iwsdk/example-assets` 0.4.2 and is bundled under
-`public/assets/plant-sansevieria/` (attribution alongside); Noto fonts are
-SIL OFL 1.1.
+`public/assets/plant-sansevieria/` (attribution alongside); Unbounded, Geologica
+and JetBrains Mono are SIL OFL 1.1.
 
 ## Settings transfer by QR
 
@@ -139,4 +238,11 @@ in this revision on the emulator: real VRMA playback/restoration, Fish free
 speech end-to-end, request composition for Gemma free (blocked upstream by
 shared-pool 429 at test time), explicit-photo privacy path, native Horizon
 controls with Cyrillic, and the encrypted QR receive flow (link re-entry, PIN
-capped at six digits, wrong-PIN error, successful apply).
+capped at six digits, wrong-PIN error, successful apply). Added in the local
+tier: the WebLLM model downloads (537 MB), loads and answers in the emulator;
+the on-device Russian voice downloads, synthesises and plays with the speaking
+clip; the on-device Whisper model downloads; the browser/OS voice picker selects
+the female OS voice; the on-device Web Speech API reports the Russian pack as
+downloadable and starts installing it. Not verified: the headset itself, the
+Russian on-device recognition quality, and any speech content beyond the
+test sentences.

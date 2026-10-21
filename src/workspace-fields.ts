@@ -21,21 +21,21 @@ export const CHARACTER_FIELDS: SettingField[] = [
 
 export const CONNECTION_FIELDS: Record<Exclude<ConnectionTab, 'transfer'>, SettingField[]> = {
   llm: [
-    { key: 'modelEndpoint', label: 'LLM base URL', placeholder: 'https://api.openai.com/v1', help: 'OpenAI-compatible chat/completions base URL. Empty = offline demo, not a real model.' },
+    { key: 'modelEndpoint', label: 'LLM base URL', placeholder: 'https://api.openai.com/v1', help: 'OpenAI-compatible chat/completions base URL. local://webllm runs WebLLM on this device. Empty = offline demo, not a real model.' },
     { key: 'modelId', label: 'LLM model', placeholder: 'Model ID from your provider' },
     { key: 'modelApiKey', label: 'LLM API key', kind: 'secret' },
   ],
   stt: [
     { key: 'sttProvider', label: 'Speech recognition provider', kind: 'provider' },
-    { key: 'sttEndpoint', label: 'STT base URL', placeholder: 'https://api.openai.com/v1', help: 'For OpenAI-compatible audio/transcriptions.' },
-    { key: 'sttModel', label: 'STT model', placeholder: 'whisper-1' },
+    { key: 'sttEndpoint', label: 'STT base URL', placeholder: 'https://api.openai.com/v1', help: 'For OpenAI-compatible audio/transcriptions. Ignored by Browser and on-device Whisper.' },
+    { key: 'sttModel', label: 'STT model', placeholder: 'whisper-1 or onnx-community/whisper-base', help: 'On-device Whisper uses a Hugging Face ONNX model id; it downloads once and is cached.' },
     { key: 'sttApiKey', label: 'STT API key', kind: 'secret' },
     { key: 'speechLanguage', label: 'Speech language', placeholder: 'ru-RU' },
   ],
   tts: [
     { key: 'ttsProvider', label: 'Speech synthesis provider', kind: 'provider' },
     { key: 'ttsEndpoint', label: 'TTS base URL', placeholder: 'https://api.openai.com/v1', help: 'For OpenAI-compatible audio/speech.' },
-    { key: 'ttsModel', label: 'TTS model', placeholder: 'tts-1' },
+    { key: 'ttsModel', label: 'TTS model', placeholder: 'tts-1 or Xenova/mms-tts-rus', help: 'On-device voice uses a Hugging Face model id; it downloads once and is cached.' },
     { key: 'ttsVoice', label: 'Voice', placeholder: 'alloy or browser voice URI' },
     { key: 'ttsApiKey', label: 'TTS API key', kind: 'secret' },
     { key: 'speechLanguage', label: 'Speech language', placeholder: 'ru-RU' },
@@ -43,5 +43,13 @@ export const CONNECTION_FIELDS: Record<Exclude<ConnectionTab, 'transfer'>, Setti
 };
 
 export const PROVIDER_LABELS: Record<string, string> = {
-  off: 'Disabled', browser: 'Browser engine', openai: 'OpenAI-compatible API',
+  off: 'Disabled', browser: 'Browser engine', local: 'On-device model', openai: 'OpenAI-compatible API',
 };
+
+/** The on-device provider is a different model for speech in and speech out. */
+export function providerLabel(key: keyof AgentSettings, value: unknown): string {
+  if (value === 'local') {
+    return key === 'sttProvider' ? 'On-device Whisper (WebGPU)' : 'On-device voice (local TTS)';
+  }
+  return PROVIDER_LABELS[String(value)] ?? String(value);
+}
