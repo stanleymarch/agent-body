@@ -7,7 +7,19 @@
 
 import { AssetType, defineAssets } from '@iwsdk/core';
 import { createLocomotionFloor } from './scene-assets/locomotion-floor.scene-asset.js';
-import { createVRSpace } from './scene-assets/vr-space.scene-asset.js';
+import { createReadingRoom } from './scene-assets/reading-room.scene-asset.js';
+import {
+  createBook,
+  createBrassSphere,
+  createCushion,
+  createKeepsakeBox,
+  createMug,
+  createRoomFloorCollider,
+  createSideboardCollider,
+  createSofaCollider,
+  createTableCollider,
+  createVase,
+} from './scene-assets/props.scene-asset.js';
 
 const publicAssetUrl = (filePath: string): string =>
   `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
@@ -27,5 +39,24 @@ export default defineAssets({
     name: 'Agent Panel',
   },
   'locomotion-floor': createLocomotionFloor(),
-  'vr-space': createVRSpace(),
+  'vr-space': createReadingRoom(),
+
+  // Static surfaces the grabbable props rest on. Invisible, physics only.
+  'collider-room-floor': createRoomFloorCollider(),
+  'collider-table': createTableCollider(),
+  'collider-sideboard': createSideboardCollider(),
+  'collider-sofa': createSofaCollider(),
+
+  // Grabbable props. Every one of them is a rigid body, so it can be picked
+  // up, thrown and knocked onto the floor.
+  'prop-book-rust': createBook(0xb44a3a, 0.24, 0.036, 0.17),
+  'prop-book-mustard': createBook(0xd08b3c, 0.22, 0.032, 0.16),
+  'prop-book-teal': createBook(0x3f6b64, 0.26, 0.042, 0.18),
+  'prop-book-navy': createBook(0x2f3e5c, 0.21, 0.03, 0.15),
+  'prop-cushion-cream': createCushion(0xd9cdb8),
+  'prop-cushion-sage': createCushion(0x8a9a7b),
+  'prop-mug': createMug(),
+  'prop-vase': createVase(),
+  'prop-brass-sphere': createBrassSphere(),
+  'prop-keepsake-box': createKeepsakeBox(),
 });

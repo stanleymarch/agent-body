@@ -20,6 +20,30 @@ import './workspace.css';
 
 const TAB_LABELS: Record<WorkspaceTab, string> = { chat: 'Dialogue', character: 'Character', connections: 'Connections', memory: 'Memory' };
 const SUB_LABELS: Record<ConnectionTab, string> = { llm: 'LLM', stt: 'STT', tts: 'TTS', transfer: 'Transfer' };
+
+/**
+ * Everything that belongs to the virtual reading room. Immersive-ar passthrough
+ * already has the real room, so the whole virtual set - architecture,
+ * colliders and grabbable props - is hidden there and only the panel remains.
+ */
+const VIRTUAL_ROOM_NODE_IDS = [
+  'vr-space',
+  'collider-floor',
+  'collider-table',
+  'collider-sideboard',
+  'collider-sofa',
+  'plant-sansevieria',
+  'prop-book-rust',
+  'prop-book-mustard',
+  'prop-book-teal',
+  'prop-book-navy',
+  'prop-mug',
+  'prop-vase',
+  'prop-brass-sphere',
+  'prop-keepsake-box',
+  'prop-cushion-cream',
+  'prop-cushion-sage',
+];
 /** The panel is smaller in an immersive session so it does not fill the view. */
 const PANEL_XR_SCALE = 0.5;
 /** Draw the panel after the scene's transparent objects (see WorkspaceSystem.update). */
@@ -610,12 +634,11 @@ export class WorkspaceSystem extends createSystem({}) {
       // The local model tier is chosen by what the device can afford.
       setLocalImmersiveSession(immersive);
       panelEntity.setValue(Visibility, 'isVisible', true);
-      const space = world.getSceneObject('vr-space');
-      if (space) space.visible = !immersive || world.session?.environmentBlendMode === 'opaque';
-      // The plant belongs to the virtual room. In MR the real room is the
-      // environment, so a virtual plant floating in it is noise.
-      const plant = world.getSceneObject('plant-sansevieria');
-      if (plant) plant.visible = !immersive || world.session?.environmentBlendMode === 'opaque';
+      const showRoom = !immersive || world.session?.environmentBlendMode === 'opaque';
+      for (const id of VIRTUAL_ROOM_NODE_IDS) {
+        const object = world.getSceneObject(id);
+        if (object) object.visible = showRoom;
+      }
       if (immersive) {
         // The head only has its real transform once the XR reference space is
         // applied, so the panel is placed on the first frame of the session.

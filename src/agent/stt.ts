@@ -75,9 +75,24 @@ export async function startListening(
   let stream: MediaStream | null = null;
   let recorder: MediaRecorder | null = null;
   let recognition: Recognition | null = null;
+  let vadTimer: number | undefined;
+  let vadContext: AudioContext | null = null;
   const controller = new AbortController();
 
+  /** Stops the energy gate that turns the microphone off after a pause. */
+  function stopVoiceDetection(): void {
+    if (vadTimer !== undefined) {
+      window.clearInterval(vadTimer);
+      vadTimer = undefined;
+    }
+    if (vadContext) {
+      void vadContext.close().catch(() => undefined);
+      vadContext = null;
+    }
+  }
+
   function releaseMicrophone(): void {
+    stopVoiceDetection();
     if (!stream) return;
     for (const track of stream.getTracks()) track.stop();
     stream = null;
@@ -139,6 +154,80 @@ export async function startListening(
     },
   };
   active = session;
+
+  // Energy gate for the recorder providers. One tap arms the microphone;
+  // speech opens the utterance and a pause closes it, so the button is not a
+  // push-to-talk switch and no second tap is needed.
+  const VAD_POLL_MS = 80;
+  const VAD_SILENCE_MS = 1100;
+  const VAD_NO_SPEECH_MS = 8000;
+  const VAD_MAX_UTTERANCE_MS = 30000;
+
+  function startVoiceDetection(recording: MediaRecorder): void {
+    const AudioCtor = window.AudioContext
+      ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const sourceStream = stream;
+    // Without an analyser the manual stop path still works.
+    if (!AudioCtor || !sourceStream) return;
+    let context: AudioContext;
+    try {
+      context = new AudioCtor();
+    } catch {
+      return;
+    }
+    vadContext = context;
+    const source = context.createMediaStreamSource(sourceStream);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.2;
+    source.connect(analyser);
+    const samples = new Float32Array(analyser.fftSize);
+    const startedAt = performance.now();
+    let heardSpeech = false;
+    let finished = false;
+    let lastVoiceAt = 0;
+    let noiseFloor = 0.004;
+
+    vadTimer = window.setInterval(() => {
+      if (closed || finished || recording.state === 'inactive') {
+        stopVoiceDetection();
+        return;
+      }
+      analyser.getFloatTimeDomainData(samples);
+      let energy = 0;
+      for (let index = 0; index < samples.length; index += 1) {
+        energy += samples[index] * samples[index];
+      }
+      const rms = Math.sqrt(energy / samples.length);
+      const now = performance.now();
+
+      if (!heardSpeech) {
+        // Learn the room noise while the user is still silent, so a hum or a
+        // fan does not hold the gate open on its own.
+        noiseFloor = noiseFloor * 0.95 + Math.min(rms, 0.05) * 0.05;
+        if (rms > Math.max(0.014, noiseFloor * 3)) {
+          heardSpeech = true;
+          lastVoiceAt = now;
+          onStatus('Microphone: listening');
+        } else if (now - startedAt > VAD_NO_SPEECH_MS) {
+          finished = true;
+          canceled = true;
+          close('No speech detected');
+        }
+        return;
+      }
+
+      if (rms > Math.max(0.01, noiseFloor * 2.5)) lastVoiceAt = now;
+      if (now - lastVoiceAt < VAD_SILENCE_MS && now - startedAt < VAD_MAX_UTTERANCE_MS) return;
+      finished = true;
+      onStatus('Microphone: speech finished, transcribing');
+      try {
+        recording.stop();
+      } catch {
+        close('Microphone error: could not finish recording');
+      }
+    }, VAD_POLL_MS);
+  }
 
   try {
     await agentState.ready;
@@ -290,7 +379,8 @@ export async function startListening(
     }
 
     recording.start();
-    onStatus('Microphone: recording; press stop to transcribe');
+    onStatus('Microphone: listening; it stops automatically after a pause');
+    startVoiceDetection(recording);
     return session;
   } catch (error) {
     if (closed) return session;

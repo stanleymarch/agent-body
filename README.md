@@ -130,6 +130,13 @@ The **browser** provider is the cheapest option and needs no key at all.
   so the audio stays on the device. Without the pack the browser falls back to
   the vendor's cloud recognition, and the status says so ("browser, cloud").
 
+**Recorder input uses voice activity, not push-to-talk.** Every recorder-backed
+provider (browser/OS speech, on-device Whisper, and the local pipeline) is gated
+in `src/agent/stt.ts`: an analyser is polled every 80 ms against an adaptive
+noise floor, speech ends after 1.1 s of silence, gives up after 8 s with no
+speech and caps one utterance at 30 s. The panel says "Microphone: listening; it
+stops automatically after a pause".
+
 ### Quest 3 reality check
 
 Not verified on hardware. What the facts say: Meta ships WebGPU in the Horizon
@@ -167,8 +174,48 @@ after the scene's transparent objects while leaving its own layering intact
 bottom of the background is not an empty slab.
 
 The virtual plant belongs to the virtual room: in **MR** (passthrough) the real
-room is the environment, so the plant and the room shell are hidden there and
-shown again in VR and on the desktop. The plant is grabbable in VR.
+room is the environment, so the whole virtual set is hidden there — the room
+shell, the plant, every prop and every collider — and the scene is left with the
+panel, the avatar and the lights (the avatar would otherwise be unlit over
+passthrough). Everything is shown again in VR and on the desktop. The plant and
+the props are grabbable in VR; the plant used to sink 11.8 cm into the floor
+because the GLTF's base sits below its origin, so it now hangs from a wrapper
+node at y 0.15 with the visual offset by the measured 0.0316 m and scaled 1.2.
+
+## The reading room and grabbable props
+
+The virtual set is now a small study rather than the old grid-and-sky arena: a
+procedural room (deep-green accent wall, bookcase, rust sofa, sage armchair,
+walnut coffee table and sideboard, a window wall with a garden band, a pendant
+lamp and framed prints) built as 277 meshes in
+`src/scene-assets/reading-room.scene-asset.ts`. The asset keeps the id and name
+`vr-space`, so nothing else in the scene document or the MR hiding list had to
+change.
+
+Everything on the tables and shelves is grabbable **and** physical. The props
+(four books, a mug, a vase, a brass sphere, a keepsake box, two cushions and the
+plant) are separate scene nodes carrying `RayInteractable`, `DistanceGrabbable`,
+`PhysicsBody` (dynamic) and `PhysicsShape`; the furniture is decoration and gets
+separate invisible static colliders (`collider-floor`, `-table`, `-sideboard`,
+`-sofa`). Two details are easy to get wrong: `PhysicsShape Auto` derives its
+dimensions from the geometry's parameters, **not** from the node scale, so the
+collider boxes bake their sizes into the generated geometry; and a distance grab
+drives the body through `SetTargetTransform`, so a fast (or single-frame) hand
+movement makes the body accumulate a large velocity that is released whole when
+the grab ends — the brass sphere ended up at `(-2345, -1412, 1094)` after being
+set down. `src/grab-physics.ts` (`GrabPhysicsGuardSystem`) pins a held body to
+its own pose with `resetVelocity` on every frame, hands back the prop's own
+motion clamped to 3.5 m/s on release, and doubles as a safety net that returns a
+body that goes non-finite or beyond 25 m to the last pose it rested at. Verified
+in the emulator: the ray intersects the sphere at 2.26 m, a controller move of
+`(+0.35, 0, -0.5)` moves the sphere by exactly that delta, a release drops it
+onto the floor (y 0.07) instead of launching it, and a mug teleported to
+`(140, 4, -60)` is back on the sideboard within 1.5 s.
+
+Room lighting is point lights only (ambient 0.28, hemisphere 0.4, a front fill,
+the pendant and the floor lamp). The two directional lights that used to key the
+avatar are gone because MToon multiplied their intensity into the dress and face
+and clipped both to flat white.
 
 ## Teleport and input
 
@@ -269,19 +316,22 @@ emulator: https://iwsdk.dev/guides/02-testing-experience.html#iwer-controls
   camera pose is preserved. Inside a session the keyboard locomotion is off, so
   the emulator's arrow keys drive the emulated thumbsticks instead.
 - **Enter MR** starts `immersive-ar` (passthrough, hands/controllers, grabbing,
-  anchors, plane/mesh detection, hit-test). The virtual room and the plant hide,
-  because the real room is the environment there.
+  anchors, plane/mesh detection, hit-test). The virtual room, the plant, the
+  props and the colliders hide, because the real room is the environment there;
+  the panel, the avatar and the lights stay.
 - **Enter VR** starts `immersive-vr` and shows the procedural virtual room with
-  the grabbable plant. State, avatar and conversation persist across mode
-  switches; the panel is re-placed for the user on every session start.
+  the grabbable plant and props. State, avatar and conversation persist across
+  mode switches; the panel is re-placed for the user on every session start.
 
 ## Character and rendering
 
 `public/vrm/user.vrm` is VRoid AvatarSample_D (VRM 1.0), presented as Ava,
 loaded with GLTFLoader + VRMLoaderPlugin. Blink, breath, sway and visemes are
 procedural; body motion comes from the CC0 VRMA library above. MToon needs real
-ambient/hemisphere/directional lights (supplied by the scene), not just an IBL
-map.
+lights (supplied by the scene), not just an IBL map — and it multiplies them
+into a pale model, so the room lights it with ambient 0.28, hemisphere 0.4 and
+point lights (front fill, pendant, floor lamp) only. The directional keys that
+used to be there clipped the dress and the face to flat white.
 
 **Asset rights:** the bundled VRM's metadata declares restricted
 redistribution/modification and personal non-profit use. Its presence is not
@@ -324,7 +374,11 @@ and starts installing it. Added in the immersive work: the panel is placed
 beside the user
 and turned towards them, the plant is hidden in MR and visible in VR, the
 keyboard no longer fights the XR locomotion, the trigger aims the teleport arc
-and the release teleports the player onto the marker. Added for the character:
+and the release teleports the player onto the marker. Added in the scene work:
+the procedural reading room, the grabbable physics props with the grab-velocity
+guard (grab, follow, release onto the floor, and a rescue that returns a lost
+prop to its resting pose), point-only room lighting so the avatar is no longer
+clipped to white, and voice-activity recording instead of a hold-to-talk button. Added for the character:
 a `chara_card_v3` export and import, round-tripped through the panel. Fixed for
 the panel: it no longer looks translucent (the floor grid used to be drawn over
 it) and its body fills the panel instead of leaving an empty lower half. Not

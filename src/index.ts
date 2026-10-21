@@ -13,6 +13,7 @@ import './fonts.js';
 import { BrowserMouseLookSystem } from './mouselook.js';
 import { AvatarSystem } from './avatar.js';
 import { AmbientSystem } from './ambient.js';
+import { GrabPhysicsGuardSystem } from './grab-physics.js';
 import { consumePairingUrl, createPairingOffer } from './pairing.js';
 import { agentState } from './agent/state.js';
 import { agentBrain } from './agent/brain.js';
@@ -33,6 +34,9 @@ World.create(
   world.registerSystem(BrowserMouseLookSystem);
   world.registerSystem(AvatarSystem);
   world.registerSystem(AmbientSystem);
+  // Registered after the physics system so grabbed bodies can be re-pinned
+  // with a zeroed velocity before the next simulation step.
+  world.registerSystem(GrabPhysicsGuardSystem);
   world.addCleanup(bindPerception(world));
   world.registerSystem(WorkspaceSystem);
 
