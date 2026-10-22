@@ -26,7 +26,7 @@
     {
       "id": "avatar-ambient",
       "name": "Room Ambient Fill",
-      "components": { "AmbientLight": { "color": [1, 1, 1, 1], "intensity": 0.28 } }
+      "components": { "AmbientLight": { "color": [1, 1, 1, 1], "intensity": 0.12 } }
     },
     {
       "id": "avatar-hemisphere",
@@ -35,7 +35,7 @@
         "HemisphereLight": {
           "skyColor": [0.94, 0.96, 1, 1],
           "groundColor": [0.42, 0.34, 0.28, 1],
-          "intensity": 0.4
+          "intensity": 0.16
         }
       }
     },
@@ -44,7 +44,7 @@
       "name": "Front Fill Light",
       "transform": { "position": [0, 2.55, 1.85] },
       "components": {
-        "PointLight": { "color": [1, 0.96, 0.9, 1], "intensity": 9, "distance": 8, "decay": 2 }
+        "PointLight": { "color": [1, 0.96, 0.9, 1], "intensity": 2.2, "distance": 8, "decay": 2 }
       }
     },
     {
@@ -52,7 +52,7 @@
       "name": "Pendant Light",
       "transform": { "position": [-0.35, 2.12, -2.6] },
       "components": {
-        "PointLight": { "color": [1, 0.93, 0.83, 1], "intensity": 12, "distance": 9, "decay": 2 }
+        "PointLight": { "color": [1, 0.93, 0.83, 1], "intensity": 3.2, "distance": 9, "decay": 2 }
       }
     },
     {
@@ -60,7 +60,7 @@
       "name": "Floor Lamp Light",
       "transform": { "position": [2.6, 1.55, -4.5] },
       "components": {
-        "PointLight": { "color": [1, 0.84, 0.64, 1], "intensity": 6, "distance": 5, "decay": 2 }
+        "PointLight": { "color": [1, 0.84, 0.64, 1], "intensity": 2, "distance": 5, "decay": 2 }
       }
     },
     {
@@ -99,8 +99,7 @@
       "components": {
         "RayInteractable": {  },
         "Visibility": { "isVisible": false },
-        "PokeInteractable": {  },
-        "DistanceGrabbable": { "movementMode": "MoveFromTarget", "scale": false }
+        "PokeInteractable": {  }
       }
     },
     {

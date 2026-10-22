@@ -15,6 +15,8 @@ import { buildCharacterCard, parseCharacterCard, serializeCharacterCard } from '
 import { getAvatarCue, onAvatarCue } from './agent/cues.js';
 import { getPerceptionStatus, onPerceptionStatus, getRoomSummary } from './agent/perception.js';
 import { createPairingOffer, consumePairingUrl, parsePairingFragment, type PairingOffer } from './pairing.js';
+import { HAPTIC_TICK, pulseHaptics } from './haptics.js';
+import { PanelGrabSystem } from './panel-grab.js';
 import { CHARACTER_FIELDS, CONNECTION_FIELDS, providerLabel, type SettingField, type WorkspaceTab, type ConnectionTab } from './workspace-fields.js';
 import './workspace.css';
 
@@ -57,6 +59,9 @@ if (pendingPairingUrl) window.history.replaceState(null, '', window.location.pat
 
 /** One Horizon UIKitML surface and controller in browser, MR and VR. */
 export class WorkspaceSystem extends createSystem({}) {
+  /** The controller that drove the pointer last, for the haptic tick. */
+  private lastHand: 'left' | 'right' = 'right';
+
   init(): void {
     const world = this.world;
     const panel = world.requireSceneObject<UIKitMLAsset>('agent-panel');
@@ -382,8 +387,13 @@ export class WorkspaceSystem extends createSystem({}) {
     const action = (id: string, callback: () => void): void => {
       const element = panel.requireElementById(id);
       element.name = id;
-      element.addEventListener('click', callback);
-      disposers.push(() => element.removeEventListener('click', callback));
+      const listener = (): void => {
+        // A short tick confirms the press on the controller that made it.
+        pulseHaptics(world, this.lastHand, HAPTIC_TICK);
+        callback();
+      };
+      element.addEventListener('click', listener);
+      disposers.push(() => element.removeEventListener('click', listener));
     };
     for (const key of Object.keys(TAB_LABELS) as WorkspaceTab[]) action(`nav-${key}`, () => selectTab(key));
     for (const key of Object.keys(SUB_LABELS) as ConnectionTab[]) action(`sub-${key}`, () => { closeEditor(true); if (editing) return; sub = key; render(); });
@@ -655,6 +665,9 @@ export class WorkspaceSystem extends createSystem({}) {
         const object = world.getSceneObject(id);
         if (object) object.visible = showRoom;
       }
+      // The grab bar belongs to the world space panel, not to the desktop
+      // overlay.
+      world.getSystem(PanelGrabSystem)?.setVisible(immersive);
       if (immersive) {
         // The head only has its real transform once the XR reference space is
         // applied, so the panel is placed on the first frame of the session.
@@ -721,5 +734,12 @@ export class WorkspaceSystem extends createSystem({}) {
       if (!mesh.isMesh) return;
       if (mesh.renderOrder !== PANEL_RENDER_ORDER) mesh.renderOrder = PANEL_RENDER_ORDER;
     });
+    // Remember which hand is driving the pointer, so a button press ticks on
+    // the controller that pressed it.
+    const gamepads = this.world.input.xr?.gamepads;
+    for (const hand of ['left', 'right'] as const) {
+      const pad = gamepads?.[hand];
+      if (pad?.getButtonPressedByIdx(0)) this.lastHand = hand;
+    }
   }
 }

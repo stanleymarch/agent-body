@@ -160,16 +160,18 @@ centre of the view, because the centre belongs to the companion and to the
 teleport arc — a panel in the middle also made the controller ray "busy" over
 the panel, which suppressed the teleport. The distance is a compromise: closer
 than a metre put the panel's lower rows at the edge of the field of view, where
-the perspective piles the buttons on top of each other. The panel is
-`DistanceGrabbable`, so it can be grabbed and moved (and rotated) with a
-controller at any time. Verified in the emulator: aiming the right controller
-at the panel (ray hit at 1.02 m), pulling the trigger and moving the controller
-by `(+0.30, +0.12, -0.30)` moves the panel by exactly that delta, and the panel
-stays where it was released instead of snapping back. A **Panel home** button
+the perspective piles the buttons on top of each other.
+
+**The panel has a grab bar, like a Horizon panel.** The bar is a slim handle
+under the panel; the panel itself is only a UI surface (`RayInteractable` plus
+`PokeInteractable`), so the trigger clicks its buttons and a finger pokes them
+without fighting a grab handle. Pointing at the bar and holding the trigger or
+the grip takes the panel and moves it with the pointer, and it stays where it
+was dropped. Verified in the emulator: the bar sits 0.3 m under the panel, a
+controller move of `(+0.30, 0, -0.40)` moves the panel by exactly that delta,
+and the panel keeps the new position after the release. A **Panel home** button
 (immersive sessions only) puts it back in front of the user, and a one-line hint
-("Hold the trigger to move it") teaches the gesture. The panel also carries
-`PokeInteractable`, which the IWSDK docs require for touch input, so the same
-panel works with a finger.
+("Hold the trigger to move it") teaches the gesture.
 
 Buttons need a *tap*, not a hold: the pointer library only emits a `click` when
 the press and the release are inside its click threshold (800 ms for the XR ray
@@ -223,13 +225,42 @@ in the emulator: the ray intersects the sphere at 2.26 m, a controller move of
 onto the floor (y 0.07) instead of launching it, and a mug teleported to
 `(140, 4, -60)` is back on the sideboard within 1.5 s.
 
-Room lighting is point lights only (ambient 0.28, hemisphere 0.4, a front fill,
-the pendant and the floor lamp). The two directional lights that used to key the
-avatar are gone because MToon multiplied their intensity into the dress and face
-and clipped both to flat white.
+**Two ways to take a prop.** The trigger with the ray is the distance grab
+(`DistanceGrabbable`, the IWSDK default): the prop keeps its distance along the
+ray and follows the pointer. Holding the **grip** takes whatever the ray rests
+on, at the distance where it was caught, and lets go when the grip is released
+(`src/grip-grab.ts`): a controller move of `(+0.30, 0, -0.40)` moves the brass
+sphere by exactly that delta, and releasing the grip drops it onto the floor
+(y 0.07) rather than launching it. The grip grab moves the body through the
+physics system, so a held rigid body follows the hand instead of fighting it,
+and its velocity is cleared every frame.
+
+**Haptics.** `src/haptics.ts` follows the usual convention: a short, low
+tick (0.22, 16 ms) confirms a button press, a stronger pulse (0.45, 32 ms)
+marks "picked up" and a softer one (0.18, 16 ms) marks "put down". Nothing
+pulses on hover and there is no continuous rumble - sustained vibration is
+tiring and says nothing the tick does not. The pulse goes to the controller
+that made the action, and devices without actuators simply do nothing.
+
+Room lighting is point lights only: ambient 0.12, hemisphere 0.16, a front fill
+at 2.2, the pendant at 3.2 and the floor lamp at 2.0. The two directional lights
+that used to key the avatar are gone because MToon multiplied their intensity
+into the dress and face and clipped both to flat white.
+
+**The rig was measured, not guessed.** With the pendant at 12 cd and the avatar
+standing 1.19 m below it, the lamp alone delivered an irradiance of 8.5 at her
+chest - her white dress rendered at 8x white. With the values above and the
+ACES tone mapping, the same camera view renders her region with 0.4 % clipped
+pixels instead of 3.7 % (measured by reading the render target back), and the
+folds of the dress, the blue bodice and her face are all readable again. The
+room keeps its warmth because the scene's IBL gradient still fills the dark
+furniture; the lamps only add the pools of light.
 
 ## Teleport and input
 
+- The **trigger** is the pointer: it clicks the panel, it aims the teleport
+  arc, and it distance-grabs the props. The **grip** takes what the ray rests
+  on, and the panel's grab bar moves the panel.
 - IWSDK aims the teleport arc with the **thumbstick pushed down**; the marker
   appears where the controller points, which is the usual controller teleport.
   The app adds the Quest-standard **trigger** as a second way to aim: hold the
@@ -407,7 +438,12 @@ and the release teleports the player onto the marker. Added in the scene work:
 the procedural reading room, the grabbable physics props with the grab-velocity
 guard (grab, follow, release onto the floor, and a rescue that returns a lost
 prop to its resting pose), point-only room lighting so the avatar is no longer
-clipped to white, and voice-activity recording instead of a hold-to-talk button. Added for the character:
+clipped to white, and voice-activity recording instead of a hold-to-talk button.
+Added for the controls: the panel's grab bar (the trigger or the grip on the bar
+moves the panel and it stays where it was dropped), the grip grab that takes
+whatever the ray points at, and haptic ticks on button presses and grabs. The
+light rig was measured by reading the render target back: the avatar's clipped
+pixels went from 3.7 % to 0.4 %. Added for the character:
 a `chara_card_v3` export and import, round-tripped through the panel. Fixed for
 the panel: it no longer looks translucent (the floor grid used to be drawn over
 it) and its body fills the panel instead of leaving an empty lower half. Not

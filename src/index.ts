@@ -6,7 +6,7 @@
  */
 
 import { World } from '@iwsdk/core';
-import { ACESFilmicToneMapping } from 'three';
+import { ACESFilmicToneMapping, WebGLRenderTarget } from 'three';
 import projectOptions from 'virtual:iwsdk-project';
 // Must be imported before the UIKitML panel asset is loaded: it widens the
 // MSDF atlas charset so Cyrillic and underscores render instead of boxes.
@@ -15,6 +15,8 @@ import { BrowserMouseLookSystem } from './mouselook.js';
 import { AvatarSystem } from './avatar.js';
 import { AmbientSystem } from './ambient.js';
 import { GrabPhysicsGuardSystem } from './grab-physics.js';
+import { PanelGrabSystem } from './panel-grab.js';
+import { GripGrabSystem } from './grip-grab.js';
 import { consumePairingUrl, createPairingOffer } from './pairing.js';
 import { agentState } from './agent/state.js';
 import { agentBrain } from './agent/brain.js';
@@ -44,6 +46,10 @@ World.create(
   // Registered after the physics system so grabbed bodies can be re-pinned
   // with a zeroed velocity before the next simulation step.
   world.registerSystem(GrabPhysicsGuardSystem);
+  // The panel is moved by its grab bar (grip button) and the props can be
+  // taken with the grip as well.
+  world.registerSystem(PanelGrabSystem);
+  world.registerSystem(GripGrabSystem);
   world.addCleanup(bindPerception(world));
   world.registerSystem(WorkspaceSystem);
 
@@ -55,6 +61,7 @@ World.create(
       avatarBody,
       localModel: { resolveLocalModel, describeLocalModel, setLocalImmersiveSession },
       pairing: { createPairingOffer, consumePairingUrl },
+      three: { WebGLRenderTarget },
     };
   }
 });
