@@ -24,6 +24,15 @@ import {
 const publicAssetUrl = (filePath: string): string =>
   `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
 
+/**
+ * The panel document is edited together with the code: new element ids, new
+ * classes. GitHub Pages caches `public/` for ten minutes, so a browser that
+ * loaded the previous deploy can pair an old agent.uikitml with a new bundle.
+ * The build stamp makes that impossible.
+ */
+const versionedAssetUrl = (filePath: string): string =>
+  `${publicAssetUrl(filePath)}?v=${typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'dev'}`;
+
 export default defineAssets({
   'plant-sansevieria': {
     // Bundled: a failed third-party CDN fetch aborts the whole level in IWSDK
@@ -34,7 +43,7 @@ export default defineAssets({
     priority: 'lazy',
   },
   'agent-panel': {
-    url: publicAssetUrl('ui/agent.uikitml'),
+    url: versionedAssetUrl('ui/agent.uikitml'),
     type: AssetType.UIKitML,
     name: 'Agent Panel',
   },

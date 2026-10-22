@@ -449,3 +449,38 @@ the panel: it no longer looks translucent (the floor grid used to be drawn over
 it) and its body fills the panel instead of leaving an empty lower half. Not
 verified: the headset itself, the Russian on-device recognition quality, and
 any speech content beyond the test sentences.
+
+## No invisible failures
+
+The interface is inside the canvas: UIKit draws the panel in WebGL, and the
+only DOM nodes the app owns are a hidden keyboard bridge and the bridge's
+inputs. So a setup step that throws leaves a window with a room and an avatar
+and **no interface**, with the reason buried in the console. That is exactly
+what a deployed build looked like once, so booting is now explicit about
+failures:
+
+- every system registration is isolated (`boot(...)` in `src/index.ts`), so one
+  failing system cannot remove the panel;
+- `WorkspaceSystem.init` wraps its setup and turns a throw into a strip at the
+  top of the window (`src/boot-diagnostics.ts`) with the message, instead of an
+  empty screen;
+- panel text updates are guarded, so a missing UIKitML element reports
+  `Panel update failed: UIKitML element "#id" was not found` **and the panel is
+  still shown** - `updateMode`, which clears the panel's authored
+  `Visibility: false`, now runs before the cosmetic WebXR capability probe;
+- `World.create(...)` has a rejection handler: a missing blocking asset
+  (including a 404 on the panel document) now reads
+  `World failed to start: Failed to load asset "agent-panel" ...`;
+- `window.__agentBody` is kept in production, so a deployed page can be
+  inspected from the console instead of guessed at.
+
+The panel document is versioned with a build stamp (`?v=<build id>` from
+`define` in `vite.config.ts`). GitHub Pages caches `public/` for ten minutes,
+and an older cached `agent.uikitml` next to a newer bundle is a real failure
+mode: the new code looks up element ids the old document does not have. The
+stamp keeps the document and the code in step.
+
+The panel's grab bar is created **hidden** and is only shown by `updateMode`
+inside a session. It used to be created visible, so on the desktop - where the
+panel is a screen-space overlay - the bar sat in the room as a grey strip on
+the sofa until the first mode change hid it.

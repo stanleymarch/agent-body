@@ -69,6 +69,11 @@ export class PanelGrabSystem extends createSystem({}) {
       new MeshStandardMaterial({ color: 0x8f959b, roughness: 0.45, metalness: 0.15 }),
     );
     mesh.name = 'panel-grab-bar';
+    // The bar belongs to the world space panel in an immersive session. On the
+    // desktop the panel is a screen space overlay, so the bar must not be
+    // created visible: it used to sit in the room as a grey strip until the
+    // first mode change hid it.
+    mesh.visible = false;
     const entity = world.createTransformEntity(mesh);
     entity.addComponent(RayInteractable);
     this.bar = entity;

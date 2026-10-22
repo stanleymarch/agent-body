@@ -11,6 +11,7 @@ import projectOptions from 'virtual:iwsdk-project';
 // Must be imported before the UIKitML panel asset is loaded: it widens the
 // MSDF atlas charset so Cyrillic and underscores render instead of boxes.
 import './fonts.js';
+import { reportBootIssue } from './boot-diagnostics.js';
 import { BrowserMouseLookSystem } from './mouselook.js';
 import { AvatarSystem } from './avatar.js';
 import { AmbientSystem } from './ambient.js';
@@ -40,28 +41,45 @@ World.create(
   world.renderer.toneMapping = ACESFilmicToneMapping;
   world.renderer.toneMappingExposure = 1.0;
 
-  world.registerSystem(BrowserMouseLookSystem);
-  world.registerSystem(AvatarSystem);
-  world.registerSystem(AmbientSystem);
+  // One failing system must not take the whole interface down with it. Each
+  // step is isolated and reported, because a throw here used to leave the room
+  // and the avatar on screen with no panel, no keyboard bridge and no visible
+  // reason for it.
+  const boot = (label: string, run: () => void): void => {
+    try {
+      run();
+    } catch (error) {
+      reportBootIssue(`Boot step failed: ${label}`, error);
+    }
+  };
+
+  boot('mouse look', () => world.registerSystem(BrowserMouseLookSystem));
+  boot('avatar', () => world.registerSystem(AvatarSystem));
+  boot('ambient idle', () => world.registerSystem(AmbientSystem));
   // Registered after the physics system so grabbed bodies can be re-pinned
   // with a zeroed velocity before the next simulation step.
-  world.registerSystem(GrabPhysicsGuardSystem);
+  boot('grab guard', () => world.registerSystem(GrabPhysicsGuardSystem));
   // The panel is moved by its grab bar (grip button) and the props can be
   // taken with the grip as well.
-  world.registerSystem(PanelGrabSystem);
-  world.registerSystem(GripGrabSystem);
-  world.addCleanup(bindPerception(world));
-  world.registerSystem(WorkspaceSystem);
+  boot('panel grab bar', () => world.registerSystem(PanelGrabSystem));
+  boot('grip grab', () => world.registerSystem(GripGrabSystem));
+  boot('perception', () => world.addCleanup(bindPerception(world)));
+  boot('workspace panel', () => world.registerSystem(WorkspaceSystem));
 
-  if (import.meta.env.DEV) {
-    (window as unknown as Record<string, unknown>).__agentBody = {
-      world,
-      agentState,
-      agentBrain,
-      avatarBody,
-      localModel: { resolveLocalModel, describeLocalModel, setLocalImmersiveSession },
-      pairing: { createPairingOffer, consumePairingUrl },
-      three: { WebGLRenderTarget },
-    };
-  }
+  // Kept in production as well: the panel is a 3D surface, so without a handle
+  // on the world a broken deploy can only be guessed at from the canvas.
+  (window as unknown as Record<string, unknown>).__agentBody = {
+    world,
+    agentState,
+    agentBrain,
+    avatarBody,
+    localModel: { resolveLocalModel, describeLocalModel, setLocalImmersiveSession },
+    pairing: { createPairingOffer, consumePairingUrl },
+    three: { WebGLRenderTarget },
+  };
+}).catch((error: unknown) => {
+  // World bootstrap includes the blocking asset preload, so a single missing
+  // file (a 404 on ui/agent.uikitml, a site served from the wrong base path)
+  // rejects here and leaves an empty canvas. Say so instead.
+  reportBootIssue('World failed to start', error);
 });

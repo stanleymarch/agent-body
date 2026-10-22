@@ -11,6 +11,14 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [iwsdkDev()],
   server: { host: '0.0.0.0', port: 8081, open: false },
+  // Public assets (the panel document, the scene) are served by GitHub Pages
+  // with a 10 minute max-age. A cached panel document next to a fresh bundle is
+  // how the interface disappears: the new code asks for element ids the old
+  // document does not have. Stamping the build lets the asset URL change with
+  // the code while staying cacheable between deploys.
+  define: {
+    __BUILD_ID__: JSON.stringify(Date.now().toString(36)),
+  },
   build: {
     outDir: 'dist',
     sourcemap: process.env.NODE_ENV !== 'production',

@@ -1,6 +1,7 @@
 import { createSystem, InputActions, InputComponent, ScreenSpace, SessionMode, UIKitMLAsset, Visibility, VisibilityState } from '@iwsdk/core';
 import { Mesh, Quaternion, Vector3 } from 'three';
 import qrcode from 'qrcode-generator';
+import { reportBootIssue } from './boot-diagnostics.js';
 import { agentState } from './agent/state.js';
 import { FREE_PRESET, LOCAL_PRESET, PAID_PRESET, isLocalLlmEndpoint } from './agent/settings.js';
 import { agentBrain } from './agent/brain.js';
@@ -63,9 +64,29 @@ export class WorkspaceSystem extends createSystem({}) {
   private lastHand: 'left' | 'right' = 'right';
 
   init(): void {
+    // A throw inside setup used to kill the system silently: the panel kept its
+    // authored `Visibility: false`, so the window showed the room and the avatar
+    // with no interface and no explanation. The strip makes the reason visible.
+    try {
+      this.setup();
+    } catch (error) {
+      reportBootIssue('Workspace setup failed', error);
+    }
+  }
+
+  private setup(): void {
     const world = this.world;
-    const panel = world.requireSceneObject<UIKitMLAsset>('agent-panel');
-    const panelEntity = world.requireSceneEntity('agent-panel');
+    const panel = world.getSceneObject<UIKitMLAsset>('agent-panel');
+    const panelEntity = world.getSceneEntity('agent-panel');
+    if (!panel || !panelEntity) {
+      // The panel is a UIKitML asset from ui/agent.uikitml. Without it there is
+      // no interface at all, and no DOM element to show in its place.
+      reportBootIssue(
+        'Panel asset "agent-panel" is missing from the scene',
+        new Error('ui/agent.uikitml did not instantiate'),
+      );
+      return;
+    }
     const authoredPanelScale = (panelEntity.object3D?.scale ?? new Vector3(1, 1, 1)).clone();
     // UIKit paints the panel in the transparent pass without depth writes, and
     // the renderer sorts transparent objects near-to-far for UI readability,
@@ -185,7 +206,7 @@ export class WorkspaceSystem extends createSystem({}) {
     const refreshRoom = (): void => {
       setText('room-status', getRoomSummary());
     };
-    const render = (): void => {
+    const renderPanel = (): void => {
       if (disposed) return;
       const settings = agentState.getSettings();
       const fields = currentFields();
@@ -262,6 +283,18 @@ export class WorkspaceSystem extends createSystem({}) {
       // gets a way back to the default spot and a hint about the grab.
       show('immersive-actions', Boolean(world.session));
       show('immersive-hint', Boolean(world.session));
+    };
+    /**
+     * Guarded wrapper. Panel text is written into a UIKit document; if one id is
+     * missing (an older ui/agent.uikitml still cached, a partially built
+     * document) the throw must not stop the panel from being made visible.
+     */
+    const render = (): void => {
+      try {
+        renderPanel();
+      } catch (error) {
+        reportBootIssue('Panel update failed', error);
+      }
     };
     disposers.push(onLocalLlmStatus((next) => {
       localStatus = next;
@@ -696,8 +729,6 @@ export class WorkspaceSystem extends createSystem({}) {
         if (disposed) return; supportsMR = mr; supportsVR = vr; render();
         if (!mr && !vr) feedback('This browser has no immersive MR/VR support. Desktop controls remain available.');
       }).catch(() => feedback('Immersive capability check unavailable. Desktop controls remain available.'));
-    } else {
-      feedback('Immersive MR/VR is unavailable in this browser. Desktop controls remain available.');
     }
     disposers.push(agentState.onSettingsChanged((settings) => { draft = { ...settings, ...pending }; render(); }));
     disposers.push(agentState.onMemoriesChanged(refreshRecords));
@@ -707,8 +738,15 @@ export class WorkspaceSystem extends createSystem({}) {
     disposers.push(onAvatarCue((next) => { cue = next; render(); }));
     disposers.push(onPerceptionStatus((status) => { cameraStatus = status; render(); }));
     void agentState.ready.then(() => { if (disposed) return; draft = { ...agentState.getSettings(), ...pending }; refreshRecords(); render(); });
+    // Show the panel before anything cosmetic runs. updateMode is what clears
+    // the authored `Visibility: false`, so nothing may throw ahead of it.
     render(); updateMode(world.visibilityState.value);
     if (getSpeechStatus()) feedback(getSpeechStatus());
+    // The capability probe only decorates the panel; run it last so a browser
+    // without WebXR cannot keep the interface hidden.
+    if (!navigator.xr || !world.xrEnabled) {
+      feedback('Immersive MR/VR is unavailable in this browser. Desktop controls remain available.');
+    }
     this.cleanupFuncs.push(() => {
       disposed = true; editing = null; input.blur();
       cancelListening(); capture?.cancel();
