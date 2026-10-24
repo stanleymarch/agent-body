@@ -5,8 +5,8 @@ import { reportBootIssue } from './boot-diagnostics.js';
 import { agentState } from './agent/state.js';
 import { FREE_PRESET, LOCAL_PRESET, PAID_PRESET, isLocalLlmEndpoint } from './agent/settings.js';
 import { agentBrain } from './agent/brain.js';
-import { getLocalLlmStatus, onLocalLlmStatus } from './agent/local-llm.js';
-import { describeLocalModel, setLocalImmersiveSession } from './agent/local-model.js';
+import { getLocalLlmStatus, onLocalLlmStatus, warmLocalLlm } from './agent/local-llm.js';
+import { describeLocalModel, LOCAL_MODELS, LOCAL_MODEL_AUTO, resolveLocalModel, setLocalImmersiveSession } from './agent/local-model.js';
 import { describeVoice, listVoices, voiceCycle } from './agent/voices.js';
 import type { AgentSettings, MemoryRecord } from './agent/contracts.js';
 import { speak, hush, getSpeechStatus, onSpeechStatus } from './agent/tts.js';
@@ -49,6 +49,20 @@ const VIRTUAL_ROOM_NODE_IDS = [
 ];
 /** The panel is smaller in an immersive session so it does not fill the view. */
 const PANEL_XR_SCALE = 0.5;
+/** Session frames over which the panel is placed before it is left alone. */
+const PANEL_PLACEMENT_FRAMES = 30;
+
+/**
+ * The on-device model variants. Shown as chips on the LLM tab whenever the
+ * draft points at the local endpoint, so "Full local" no longer hides which
+ * models exist and what each one costs in download and VRAM.
+ */
+const LOCAL_MODEL_CHIPS: Record<string, string> = {
+  'llm-model-auto': LOCAL_MODEL_AUTO,
+  'llm-model-gemma': 'gemma3-1b-it-q4f16_1-MLC',
+  'llm-model-smollm': 'SmolLM2-360M-Instruct-q4f16_1-MLC',
+  'llm-model-qwen': 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
+};
 /** Draw the panel after the scene's transparent objects (see WorkspaceSystem.update). */
 const PANEL_RENDER_ORDER = 20;
 type EditorTarget = SettingField | 'chat' | 'note' | 'search' | 'pin' | 'card';
@@ -88,6 +102,10 @@ export class WorkspaceSystem extends createSystem({}) {
       return;
     }
     const authoredPanelScale = (panelEntity.object3D?.scale ?? new Vector3(1, 1, 1)).clone();
+    // The session may move the panel anywhere the user dragged it; on the
+    // desktop it must come back exactly where the scene authored it.
+    const authoredPanelPosition = (panelEntity.object3D?.position ?? new Vector3()).clone();
+    const authoredPanelQuaternion = (panelEntity.object3D?.quaternion ?? new Quaternion()).clone();
     // UIKit paints the panel in the transparent pass without depth writes, and
     // the renderer sorts transparent objects near-to-far for UI readability,
     // so the scene behind painted over the panel and it looked translucent.
@@ -240,7 +258,7 @@ export class WorkspaceSystem extends createSystem({}) {
       } else if (transfer) {
         body = receivingUrl ? 'Encrypted settings received. Enter the 6-digit PIN from the sending device, then Apply settings. The link expires after 10 minutes. Skip discards this link without changing your settings.' : 'Encrypted settings transfer. Save settings first, generate a QR, then scan/open its link on the receiver and enter the PIN. QR + PIN together are secret. Expires after 10 minutes. No memory or dialogue is transferred.';
       } else {
-        body = sub === 'llm' ? 'Presets fill this draft; Save applies them. Full local runs a WebGPU model with on-device Whisper and the local OS voice: no key, no audio and no text leaves the device. Free APIs uses OpenRouter Nemotron free with the free browser/OS speech of this machine. Paid APIs uses Gemma 4 31B and asks OpenRouter to sort providers by price. API keys are never copied or cleared by a preset and are never bundled.' : sub === 'stt' ? 'Independent speech recognition. The browser engine is free: with the on-device speech pack it never uploads audio, otherwise the browser vendor recognises it in the cloud. On-device Whisper runs through WebGPU, downloads once, and never uploads audio. OpenAI-compatible STT records only while active. Test records and displays a transcript without sending it to the LLM.' : 'Independent speech output. The browser voice is the free OS voice of this machine, a female voice is picked first and Next voice cycles them. The on-device voice (MMS TTS) never sends the text anywhere, but it is much harder to understand than the OS voice. The Fish free preset uses the OpenAI-compatible audio/speech endpoint instead. Copy LLM key to TTS is an explicit separate action.';
+        body = sub === 'llm' ? 'Presets fill this draft; Save applies them. Full local runs a WebGPU model with on-device Whisper and the local OS voice: no key, no audio and no text leaves the device. Free APIs uses OpenRouter Nemotron free with the free browser/OS speech of this machine. Paid APIs uses Gemma 4 31B and asks OpenRouter to sort providers by price. API keys are never copied or cleared by a preset and are never bundled. Local variants: Auto picks a model for this device (desktop Gemma 3 1B, headset or ≤4 GB SmolLM2 360M) and the chips below pin one explicitly.' : sub === 'stt' ? 'Independent speech recognition. The browser engine is free: with the on-device speech pack it never uploads audio, otherwise the browser vendor recognises it in the cloud. On-device Whisper runs through WebGPU, downloads once, and never uploads audio. OpenAI-compatible STT records only while active. Test records and displays a transcript without sending it to the LLM.' : 'Independent speech output. The browser voice is the free OS voice of this machine, a female voice is picked first and Next voice cycles them. The on-device voice (MMS TTS) never sends the text anywhere, but it is much harder to understand than the OS voice. The Fish free preset uses the OpenAI-compatible audio/speech endpoint instead. Copy LLM key to TTS is an explicit separate action.';
       }
       setText('workspace-body', body);
       show('record-navigation', history && !editing);
@@ -264,6 +282,13 @@ export class WorkspaceSystem extends createSystem({}) {
       show('workspace-preset', character);
       show('character-actions', character && !editing);
       show('llm-presets', connection && sub === 'llm' && !editing);
+      // The local model variants only matter when the draft points at the
+      // on-device stack; the chip of the drafted model is tinted.
+      const localDraft = isLocalLlmEndpoint(draft.modelEndpoint);
+      show('llm-models', connection && sub === 'llm' && !editing && localDraft);
+      for (const [chip, modelId] of Object.entries(LOCAL_MODEL_CHIPS)) {
+        tintChip(chip, connection && sub === 'llm' && draft.modelId === modelId ? '#d2e3fc' : '#f1f3f4');
+      }
       show('connection-actions', connection && !transfer && !editing && sub === 'tts');
       show('workspace-copy-key', sub === 'tts');
       show('workspace-browser-voice', sub === 'tts' && draft.ttsProvider === 'browser');
@@ -309,7 +334,17 @@ export class WorkspaceSystem extends createSystem({}) {
           if (pending[key] === patch[key]) delete pending[key];
         }
         draft = { ...agentState.getSettings(), ...pending };
-        feedback('Saved on this device.'); render(); return true;
+        // Applying the local preset starts the model download immediately and
+        // shows its progress in the status line; the user does not have to
+        // send a first message to discover where the "download" lives.
+        const applied = agentState.getSettings();
+        if (isLocalLlmEndpoint(applied.modelEndpoint)) {
+          feedback('Saved on this device. The local model now downloads in the background - watch the status line.');
+          void warmLocalLlm(applied.modelId);
+        } else {
+          feedback('Saved on this device.');
+        }
+        render(); return true;
       } catch (error) { reportError(error); return false; }
     };
     const submit = (text: string): void => {
@@ -460,7 +495,7 @@ export class WorkspaceSystem extends createSystem({}) {
     action('workspace-preset', () => { changeDraft({ characterVrmUrl: '', characterScale: 1 }); feedback('Bundled character selected in draft. Save to apply.'); render(); });
     action('workspace-local-preset', () => {
       changeDraft(LOCAL_PRESET);
-      feedback('Full-local draft: Gemma 3 1B via WebGPU, on-device Whisper, the local OS voice (female voice preferred). First use downloads the models; no API key and no data leaves the device. Save to apply.');
+      feedback('Full-local draft: on-device WebGPU model, Whisper and OS voice - no key, nothing leaves the device. Save starts the model download; progress shows in the status line above.');
       render();
     });
     action('workspace-free-preset', () => {
@@ -473,6 +508,17 @@ export class WorkspaceSystem extends createSystem({}) {
       feedback('Paid-API draft: Gemma 4 31B with cheapest healthy provider first, Fish free voice, browser STT. Keys are unchanged; add an OpenRouter key. Save to apply.');
       render();
     });
+    for (const [chip, modelId] of Object.entries(LOCAL_MODEL_CHIPS)) {
+      action(chip, () => {
+        changeDraft({ modelId });
+        const info = LOCAL_MODELS[modelId] ?? resolveLocalModel(modelId);
+        const footprint = info.vramMB ? `${info.vramMB} MB VRAM / ${info.downloadMB} MB download` : 'custom model';
+        feedback(modelId === LOCAL_MODEL_AUTO
+          ? `Draft model: Auto - runs ${info.label} on this device (${footprint}). Save to apply.`
+          : `Draft model: ${info.label} (${footprint}, ${info.note}). Save to apply.`);
+        render();
+      });
+    }
     action('workspace-copy-key', () => {
       if (!draft.modelApiKey) { feedback('Set an LLM key first. The TTS key was not changed.', true); return; }
       changeDraft({ ttsApiKey: draft.modelApiKey });
@@ -665,21 +711,26 @@ export class WorkspaceSystem extends createSystem({}) {
       const headRotation = new Quaternion();
       head.getWorldPosition(headPosition);
       head.getWorldQuaternion(headRotation);
-      // The head looks down its own -Z axis, its +X axis points right.
+      // The head looks down its own -Z axis, its +X axis points right and its
+      // +Y is up. All offsets are applied in this camera space: a headset
+      // keeps its floor-anchored "up", but a handheld phone reports an
+      // AR session in a camera-anchored "local" space where the world Y axis
+      // has no relation to the floor, so a world-Y drop parked the panel
+      // below the user's view - effectively at the floor.
       const look = new Vector3(0, 0, -1).applyQuaternion(headRotation);
       const right = new Vector3(1, 0, 0).applyQuaternion(headRotation);
-      // A phone is held at arm's length, so there the panel sits closer, lower
-      // and larger; a headset keeps the roomy, off-centre placement.
+      const up = new Vector3(0, 1, 0).applyQuaternion(headRotation);
+      // A phone is held at arm's length, so there the panel sits closer and
+      // smaller; a headset keeps the roomy, off-centre placement.
       const handheld = !supportsVR;
-      const distance = handheld ? 0.5 : 1.15;
-      const side = handheld ? -0.12 : -0.42;
-      const drop = handheld ? 0.22 : 0.18;
-      const scale = handheld ? 0.62 : PANEL_XR_SCALE;
-      const position = headPosition.clone()
+      const distance = handheld ? 0.55 : 1.15;
+      const side = handheld ? 0 : -0.42;
+      const drop = handheld ? 0.1 : 0.18;
+      const scale = handheld ? 0.3 : PANEL_XR_SCALE;
+      object.position.copy(headPosition)
         .add(look.multiplyScalar(distance))
-        .add(right.multiplyScalar(side));
-      position.y = headPosition.y - drop;
-      object.position.copy(position);
+        .add(right.multiplyScalar(side))
+        .add(up.multiplyScalar(-drop));
       object.lookAt(headPosition);
       object.scale.setScalar(scale);
       object.updateMatrixWorld(true);
@@ -703,14 +754,27 @@ export class WorkspaceSystem extends createSystem({}) {
       world.getSystem(PanelGrabSystem)?.setVisible(immersive);
       if (immersive) {
         // The head only has its real transform once the XR reference space is
-        // applied, so the panel is placed on the first frame of the session.
+        // applied, and phones can take a few frames longer than headsets to
+        // publish a settled camera pose, so the panel is placed on the first
+        // frames of the session and then left alone for the user to grab.
+        let frames = 0;
         let unsubscribe: (() => void) | undefined;
         unsubscribe = world.onXRFrame(() => {
           placePanelInFrontOfUser();
-          unsubscribe?.();
+          frames += 1;
+          if (frames >= PANEL_PLACEMENT_FRAMES) unsubscribe?.();
         });
       } else {
-        panelEntity.object3D?.scale.copy(authoredPanelScale);
+        const object = panelEntity.object3D;
+        if (object) {
+          // Scale, position and orientation all go back to the authored
+          // desktop values: leaving it where a session drag left it would
+          // strand the panel at an unexplained height after exiting XR.
+          object.scale.copy(authoredPanelScale);
+          object.position.copy(authoredPanelPosition);
+          object.quaternion.copy(authoredPanelQuaternion);
+          object.updateMatrixWorld(true);
+        }
       }
       // In the browser emulator the arrow keys drive the emulated thumbstick,
       // so the keyboard locomotion would fight the XR locomotion (the stick

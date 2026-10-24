@@ -150,6 +150,28 @@ export async function completeLocalLlm(
   }
 }
 
+/**
+ * Begin the model download and compile as soon as the user applies the local
+ * preset, instead of hiding it inside the first chat turn. Progress still
+ * streams through setStatus, so the panel's status line shows it live.
+ */
+export async function warmLocalLlm(modelId: string): Promise<void> {
+  let model: LocalModelInfo;
+  try {
+    model = resolveLocalModel(modelId);
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : 'Unknown local model.');
+    return;
+  }
+  setStatus(`Preparing ${model.label} (${model.downloadMB} MB download, cached)...`);
+  try {
+    await ensureEngine(model);
+    setStatus('');
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : 'The local model could not be loaded.');
+  }
+}
+
 /** Release the WebGPU worker (used when the user changes away from local mode). */
 export async function unloadLocalLlm(): Promise<void> {
   const current = engine;

@@ -76,6 +76,12 @@
     <Button id="workspace-free-preset" class="control"><ButtonLabel class="label">Free APIs</ButtonLabel></Button>
     <Button id="workspace-paid-preset" class="control"><ButtonLabel class="label">Paid APIs</ButtonLabel></Button>
   </div>
+  <div id="llm-models" class="row">
+    <Button id="llm-model-auto" class="control"><ButtonLabel id="llm-model-auto-label" class="label">Auto</ButtonLabel></Button>
+    <Button id="llm-model-gemma" class="control"><ButtonLabel id="llm-model-gemma-label" class="label">Gemma 1B</ButtonLabel></Button>
+    <Button id="llm-model-smollm" class="control"><ButtonLabel id="llm-model-smollm-label" class="label">SmolLM 360M</ButtonLabel></Button>
+    <Button id="llm-model-qwen" class="control"><ButtonLabel id="llm-model-qwen-label" class="label">Qwen 0.5B</ButtonLabel></Button>
+  </div>
   <div id="connection-actions" class="row">
     <Button id="workspace-copy-key" class="control"><ButtonLabel class="label">Copy LLM key to TTS</ButtonLabel></Button>
     <Button id="workspace-browser-voice" class="control"><ButtonLabel class="label">Next browser voice</ButtonLabel></Button>
